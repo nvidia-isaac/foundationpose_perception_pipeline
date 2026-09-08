@@ -17,9 +17,10 @@ other explanation lives in a comment beside the code it describes.
 **Contents:** [Requirements](#1-requirements) · [Install](#2-install) · [Verify](#3-verify-the-install) ·
 [Quickstart](#4-quickstart) · [Configuration](#5-configuration) ·
 [Dataset adaptation](#6-dataset-adaptation) · [Running](#7-running) ·
-[Licenses](#8-licenses)
+[Licenses](#8-licenses) · [Contributing](#9-Contributing)
 
-This project is currently not accepting contributions.
+Contributions are welcome. All commits must be signed off under the Developer Certificate of Origin
+ - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -756,3 +757,14 @@ Use of this pipeline may rely on third party components or models that you must 
 separately. The components or models are subject to the applicable open source licenses or other
 license terms, including any proprietary notices, disclaimers, requirements, and extended use
 rights.
+
+---
+
+## 9. Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull
+request. Every commit must carry a `Signed-off-by` line certifying the Developer Certificate of
+Origin — `git commit -s` adds it. Pull requests with unsigned commits will not be merged.
+
+To report a security vulnerability, follow [SECURITY.md](SECURITY.md) rather than opening an
+issue.
