@@ -22,7 +22,7 @@ first.
 cd <repo root>
 P=$PWD/.venv/lib/python3.12/site-packages
 export LD_LIBRARY_PATH="$P/tensorrt_libs:$P/nvidia/cu13/lib:$LD_LIBRARY_PATH"
-export FOUNDATIONPOSE_ROOT=$(realpath ../tao-foundation-pose-sdk)
+export FOUNDATIONPOSE_ROOT=$(realpath ../foundation-pose-inference-library)
 ```
 
 Skipping this fails deep in the pose stage, *after* depth has already run for every scene:

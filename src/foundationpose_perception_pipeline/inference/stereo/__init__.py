@@ -19,14 +19,22 @@ package is imported unless a caller asks for it, so a checkout without them stil
 other stage.
 """
 
-from foundationpose_perception_pipeline.inference.stereo.build import ShapeProfile, build_engine, engine_path_for
+from foundationpose_perception_pipeline.inference.stereo.build import (
+    ShapeProfile,
+    build_engine,
+    engine_path_for,
+)
 from foundationpose_perception_pipeline.inference.stereo.depth import (
     SceneDepth,
     StereoDepthError,
     scene_depth,
     write_scene_depth,
 )
-from foundationpose_perception_pipeline.inference.stereo.tao import StereoEngine, load_engine, normalize_for_model
+from foundationpose_perception_pipeline.inference.stereo.tao import (
+    StereoEngine,
+    load_engine,
+    normalize_for_model,
+)
 
 __all__ = [
     "SceneDepth",

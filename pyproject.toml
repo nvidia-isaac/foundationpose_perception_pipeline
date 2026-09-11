@@ -73,7 +73,7 @@ foundationpose = [
   # TAO Deploy also runs on whatever TensorRT is installed and declares none itself, so this is
   # the single place the version is pinned. Moving it means rebuilding every depth engine, which
   # is TensorRT-version-specific.
-  "tensorrt-cu13==10.16.1.11",   # matches the SDK's TensorRT 10.16
+  "tensorrt-cu13==10.16.1.11",   # matches the inference library's TensorRT 10.16
   "nvidia-cuda-runtime",         # provides libcudart.so.13
 ]
 

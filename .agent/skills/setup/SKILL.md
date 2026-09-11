@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Installs and verifies the perception pipeline environment — the pipeline's own venv, SAM3, the TAO FoundationPose SDK, and FoundationStereo run through TAO Deploy as a TensorRT engine. Use when asked to set up, install, provision, bootstrap, or repair this repo's environment, or when a run fails with a missing-dependency, venv, CUDA, TensorRT, pycuda, or LD_LIBRARY_PATH error.
+description: Installs and verifies the perception pipeline environment — the pipeline's own venv, SAM3, the FoundationPose Inference Library, and FoundationStereo run through TAO Deploy as a TensorRT engine. Use when asked to set up, install, provision, bootstrap, or repair this repo's environment, or when a run fails with a missing-dependency, venv, CUDA, TensorRT, pycuda, or LD_LIBRARY_PATH error.
 ---
 
 # Pipeline setup
@@ -28,8 +28,8 @@ this document.
   ldd --version | head -1
   strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep -c GLIBCXX_3.4.31   # want 1
   ```
-  The SDK ships a prebuilt `libfoundation_pose_nvidia.so` linked against those versions. On
-  Ubuntu 22.04 (glibc 2.35 / GLIBCXX 3.4.30) every step below succeeds — including the SDK build
+  The FoundationPose Inference Library ships a prebuilt `libfoundation_pose_nvidia.so` linked against those versions. On
+  Ubuntu 22.04 (glibc 2.35 / GLIBCXX 3.4.30) every step below succeeds — including the FoundationPose Inference Library build
   in step 3 — and the pose stage then cannot load what it just built, failing with
   `libc.so.6: version GLIBC_2.38 not found`. **No wheel, venv or `LD_LIBRARY_PATH` can fix it**;
   extending the search path is the natural next move and it cannot work, because no path on the
@@ -45,7 +45,7 @@ this document.
 - `uv --version`, `docker --version`, `git --version` — all required; stop and tell the user if
   any is missing rather than trying to install them yourself.
 - **Docker must be able to reach the GPU, and your user must be able to reach Docker.** Step 3
-  builds the SDK through `./run_dev.sh`, whose compose override gives the build service
+  builds the FoundationPose Inference Library through `./run_dev.sh`, whose compose override gives the build service
   `gpus: all`, so a working `docker --version` is not enough on its own — the NVIDIA Container
   Toolkit has to be installed and the daemon restarted, and your account has to be in the `docker`
   group. Both fail late and confusingly if skipped: the first as a container that cannot see the
@@ -66,7 +66,7 @@ this document.
   sudo apt-get update && sudo apt-get install -y wget unzip
   ```
 - Checkout layout: this repo's directory must sit **next to** the sibling checkouts, not contain
-  them: `<parent>/<this repo>/`, `<parent>/sam3/`, `<parent>/tao-foundation-pose-sdk/`,
+  them: `<parent>/<this repo>/`, `<parent>/sam3/`, `<parent>/foundation-pose-inference-library/`,
   `<parent>/models/` (the depth export -- files, not a checkout), `<parent>/<datasets>/`. The repo
   does not need to be literally named `pipeline` — only the sibling relationship matters, since
   `FOUNDATIONPOSE_ROOT` and the config profile's dataset paths are resolved relative to it.
@@ -114,11 +114,11 @@ confirming access — a missing grant only surfaces later, deep inside `verify_s
 **From here on, every `uv sync` for this repo is `uv sync --inexact --extra foundationpose`** —
 never bare `uv sync` again.
 
-## 3. TAO FoundationPose SDK (sibling checkout, Docker build, weights)
+## 3. FoundationPose Inference Library (sibling checkout, Docker build, weights)
 
 ```bash
-cd .. && git clone https://github.com/NVIDIA-TAO/tao-foundation-pose-sdk.git
-cd tao-foundation-pose-sdk
+cd .. && git clone https://github.com/nvidia-isaac/foundation-pose-inference-library.git
+cd foundation-pose-inference-library
 cp .env.example .env
 sed -i "s/^FP_UID.*/FP_UID=$(id -u)/" .env
 sed -i "s/^FP_GID.*/FP_GID=$(id -g)/" .env
@@ -127,7 +127,7 @@ sed -i "s/^FP_GID.*/FP_GID=$(id -g)/" .env
 # two therefore agree only by coincidence of both pointing at ./weights, and editing FP_WEIGHTS_DIR
 # moves where the DOWNLOAD lands without moving where the pipeline LOOKS.
 # Only FP_UID/FP_GID need editing. LEAVE FP_WEIGHTS_DIR ALONE: the shipped default ./weights
-# resolves to <sdk checkout>/weights, which is exactly where the pipeline looks for the ONNX
+# resolves to <FoundationPose Inference Library checkout>/weights, which is exactly where the pipeline looks for the ONNX
 # weights when no CLI flag is given (pose.py's ensure_foundationpose_paths resolves
 # <FOUNDATIONPOSE_ROOT>/weights/refiner_net.onnx and score_net.onnx). Point it anywhere else and
 # the build still succeeds, download_weights.sh still succeeds, and the run fails much later with
@@ -135,7 +135,7 @@ sed -i "s/^FP_GID.*/FP_GID=$(id -g)/" .env
 # --fp-refine-model-path and --fp-score-model-path. `--fp-library` is the third flag with this
 # same FOUNDATIONPOSE_ROOT coupling -- it defaults to
 # <FOUNDATIONPOSE_ROOT>/build/libfoundation_pose_nvidia.so -- so if you
-# relocate any part of the SDK, all three move together.
+# relocate any part of the FoundationPose Inference Library, all three move together.
 # Create the bind-mount targets first, or docker creates them as root inside your checkout and
 # undoes the FP_UID/FP_GID lines above:
 mkdir -p data weights engine_cache
@@ -158,7 +158,7 @@ The pipeline calls FoundationPose in-process through its Python bindings, not th
 
 ```bash
 uv sync --inexact --extra foundationpose
-ldd ../tao-foundation-pose-sdk/build/libfoundation_pose_nvidia.so | grep "not found"
+ldd ../foundation-pose-inference-library/build/libfoundation_pose_nvidia.so | grep "not found"
 ```
 
 Anything `ldd` prints means a wheel under `.venv/lib/python3.12/site-packages/` owns the missing
@@ -268,7 +268,7 @@ Four things about the result, each of which bites otherwise:
 - **Not portable.** An engine is specific to the GPU architecture, the TensorRT version, the
   precision and the input shape. The filename encodes all of them and a sidecar `.json` records
   the source ONNX's sha256, so a stale one is refused rather than used silently. Never commit
-  engines. Rebuild after any TensorRT change — including one driven by a FoundationPose SDK
+  engines. Rebuild after any TensorRT change — including one driven by a FoundationPose Inference Library
   upgrade, since both extras pin the same `tensorrt-cu13`.
 - **FP32 is the default and is what we want.** Precision is fixed at build time. Treat `--precision
   fp16` as a measured experiment against the fp32 engine, never as a default arrived at by
@@ -306,7 +306,7 @@ flag on every command".
 
 ```bash
 source .venv/bin/activate
-export FOUNDATIONPOSE_ROOT=$(realpath ../tao-foundation-pose-sdk)
+export FOUNDATIONPOSE_ROOT=$(realpath ../foundation-pose-inference-library)
 SITE=$(realpath .venv/lib/python3.12/site-packages)
 export LD_LIBRARY_PATH="${SITE}/tensorrt_libs:${SITE}/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
 ```
@@ -359,7 +359,7 @@ raw error text. Two additions specific to this path:
 - [ ] Pipeline venv synced, numpy pinned to `1.26.x`
 - [ ] SAM3 installed editable; checkpoint access confirmed (user-gated step)
 - [ ] Host meets the glibc ≥ 2.38 / GLIBCXX ≥ 3.4.31 floor (§0) — check before anything else
-- [ ] FoundationPose SDK built, weights downloaded (public, no NGC credential), `ldd` clean
+- [ ] FoundationPose Inference Library built, weights downloaded (public, no NGC credential), `ldd` clean
 - [ ] `nvidia-tao-deploy==7.1.0` (`--no-deps`) + `pycuda` installed
 - [ ] Deployable ONNX fetched from NGC (public, no credential); engine built fp32 + static, with
       `--shape-from-scene` when a dataset is present. **Installing before the data arrives is

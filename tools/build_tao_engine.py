@@ -74,7 +74,10 @@ def rectified_shape_for_scene(scene_dir: Path, base_camera: int, max_width: int)
     function for the failure this avoids.
     """
     from foundationpose_perception_pipeline.inference.stereo.depth import load_cameras, read_rgb
-    from foundationpose_perception_pipeline.inference.stereo.rectify import rectify_pair, select_partner_camera
+    from foundationpose_perception_pipeline.inference.stereo.rectify import (
+        rectify_pair,
+        select_partner_camera,
+    )
 
     intrinsics, extrinsics, _ = load_cameras(scene_dir)
     sample = read_rgb(scene_dir / "rgb" / f"{base_camera:06d}.png")

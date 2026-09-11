@@ -21,7 +21,11 @@ import cv2
 import numpy as np
 
 from foundationpose_perception_pipeline.dataset import targets_for_scene_frame0
-from foundationpose_perception_pipeline.evaluation.gt import GroundTruthRenderer, render_gt_entries, render_gt_entries_cached
+from foundationpose_perception_pipeline.evaluation.gt import (
+    GroundTruthRenderer,
+    render_gt_entries,
+    render_gt_entries_cached,
+)
 
 # Reading a collected depth PNG is an IO concern, not a scoring one, so it lives in `io.bop`
 # where any caller can reach it without importing anything from this package.

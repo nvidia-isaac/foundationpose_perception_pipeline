@@ -35,7 +35,10 @@ from foundationpose_perception_pipeline.config import (
 from foundationpose_perception_pipeline.config import (
     DEFAULT_SAM3_REFINEMENT_NMS_THRESHOLD as DEFAULT_REFINEMENT_NMS_THRESHOLD,
 )
-from foundationpose_perception_pipeline.evaluation.report import MultiDatasetReportConfig, MultiDatasetReportGenerator
+from foundationpose_perception_pipeline.evaluation.report import (
+    MultiDatasetReportConfig,
+    MultiDatasetReportGenerator,
+)
 from foundationpose_perception_pipeline.inference.depth import (
     add_backend_arguments,
     backend_forwarded_flags,

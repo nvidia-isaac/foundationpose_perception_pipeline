@@ -102,14 +102,14 @@ Not installed by a default `uv sync`. See [README.md](README.md) for how each is
 
 ---
 
-## 4. Models and SDKs obtained separately
+## 4. Models and Libs obtained separately
 
 None of these are redistributed with this code, and none are covered by this repository's
 Apache-2.0 license. Code and weights are licensed separately for every one of them.
 
 | Component | Code | Weights / checkpoint |
 |---|---|---|
-| TAO FoundationPose SDK | Apache-2.0, public on [GitHub](https://github.com/NVIDIA-TAO/tao-foundation-pose-sdk) | separate NGC artifact — `nvidia/tao/foundationpose:deployable_v1.0` terms, not Apache-2.0 |
+| FoundationPose Inference Library | Apache-2.0, public on [GitHub](https://github.com/nvidia-isaac/foundation-pose-inference-library) | separate NGC artifact — `nvidia/tao/foundationpose:deployable_v1.0` terms, not Apache-2.0 |
 | SAM3 | `LicenseRef-Meta-SAM` (Meta's SAM License, not OSI-approved) | same license; the checkpoint is gated — request access at <https://huggingface.co/facebook/sam3> |
 | FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate NGC artifact — the [model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms |
 

@@ -133,13 +133,15 @@ class FoundationPoseRegistry:
                 # engine the previous object or dataset built, and each one then pays a
                 # multi-minute TensorRT build for a byte-identical result.
                 #
-                # The SDK agrees: `multi_object.py` hands every object in a group the same
-                # `engine_cache_dir`, varying only `cad_path` and `mesh_unit_scale`. So does
+                # The FoundationPose Inference Library agrees: `multi_object.py` hands every object
+                # in a group the same `engine_cache_dir`, varying only `cad_path` and
+                # `mesh_unit_scale`. So does
                 # `run_batch_eval.py`, which deliberately passes ONE root for a whole sweep --
                 # a per-dataset component here quietly undid that.
                 #
                 # The tell, if either component is reintroduced: every directory holds a plan
-                # whose filename carries the SDK's own cache key, and the keys are all equal.
+                # whose filename carries the FoundationPose Inference Library's own cache key,
+                # and the keys are all equal.
                 # Measured that way before removing each: 30 directories and 2 distinct engines on
                 # one dataset, then 82 directories and still 2 across a 32-dataset sweep.
                 engine_cache_dir=self.engine_cache_dir,

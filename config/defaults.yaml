@@ -113,7 +113,7 @@ depth:
   # of that survives being copied to another machine. tools/build_tao_engine.py encodes all five
   # in the filename and writes a sidecar recording the source ONNX's hash, so a stale engine is
   # refused rather than used. Rebuild after any TensorRT upgrade -- including one driven by the
-  # FoundationPose SDK, which pins the same `tensorrt-cu13` version.
+  # FoundationPose Inference Library, which pins the same `tensorrt-cu13` version.
   #
   # The shape matters and is not a free choice: build it for the rectified size THIS dataset
   # produces, padded up to a multiple of 32. Ask for it rather than guessing:

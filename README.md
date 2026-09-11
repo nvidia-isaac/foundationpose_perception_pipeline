@@ -27,7 +27,7 @@ Contributions are welcome. All commits must be signed off under the Developer Ce
 ## 1. Requirements
 
 - **glibc ≥ 2.38 and GLIBCXX ≥ 3.4.31** — in practice **Ubuntu 24.04 or newer**. This is the
-  floor that is easiest to miss and most expensive to discover: the FoundationPose SDK ships a
+  floor that is easiest to miss and most expensive to discover: the FoundationPose Inference Library ships a
   prebuilt `libfoundation_pose_nvidia.so` linked against those versions, and **no wheel, venv or
   `LD_LIBRARY_PATH` can supply them** — the fix is a different OS. Ubuntu 22.04 (glibc 2.35,
   GLIBCXX 3.4.30) meets every other requirement on this page and still cannot load the pose
@@ -77,7 +77,7 @@ Expected checkout layout — the default config paths assume it:
   pipeline/            this repo
     .venv/                   Python 3.12
   sam3/
-  tao-foundation-pose-sdk/
+  foundation-pose-inference-library/
   models/              the NGC depth export (§2.4) — a directory of files, not a checkout
   <your datasets>/     wherever you like; `dataset.root` in the profile points at it (§5)
 ```
@@ -174,12 +174,12 @@ Nothing checks this and nothing is enforced — a newer revision is a reasonable
 
 ### 2.3 FoundationPose
 
-The TAO FoundationPose SDK is open source (Apache-2.0):
+The FoundationPose Inference Library is open source (Apache-2.0):
 
 ```bash
 cd ..
-git clone https://github.com/NVIDIA-TAO/tao-foundation-pose-sdk.git
-cd tao-foundation-pose-sdk
+git clone https://github.com/nvidia-isaac/foundation-pose-inference-library.git
+cd foundation-pose-inference-library
 
 cp .env.example .env    # set FP_DATA_DIR, FP_WEIGHTS_DIR for your machine
 sed -i "s/^FP_UID.*/FP_UID=$(id -u)/" .env
@@ -214,7 +214,7 @@ Two details, both of which bite otherwise:
 Check nothing is still missing:
 
 ```bash
-ldd ../tao-foundation-pose-sdk/build/libfoundation_pose_nvidia.so | grep "not found"
+ldd ../foundation-pose-inference-library/build/libfoundation_pose_nvidia.so | grep "not found"
 ```
 
 If that prints anything, find which wheel under `.venv/lib/python3.12/site-packages/` owns the
@@ -223,7 +223,7 @@ missing `.so` and add its directory to `LD_LIBRARY_PATH`.
 Two environment variables every entry point needs:
 
 ```bash
-export FOUNDATIONPOSE_ROOT=$(realpath ../tao-foundation-pose-sdk)
+export FOUNDATIONPOSE_ROOT=$(realpath ../foundation-pose-inference-library)
 export LD_LIBRARY_PATH=".venv/lib/python3.12/site-packages/tensorrt_libs:.venv/lib/python3.12/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
 ```
 
@@ -299,7 +299,7 @@ beside the ONNX unless `--out-dir` says otherwise, and its path is printed at th
 A TensorRT engine is **not portable** — it is specific to the GPU architecture, the TensorRT
 version, the precision and the input shape. The filename encodes all of these and a sidecar
 records the source ONNX's hash, so a stale one is refused rather than used silently. Do not commit
-engines; rebuild after any TensorRT change, including one driven by the FoundationPose SDK, which
+engines; rebuild after any TensorRT change, including one driven by the FoundationPose Inference Library, which
 pins the same `tensorrt-cu13` version.
 
 **Then tell the pipeline where it is.** No engine path is committed — one is wrong for every
@@ -659,7 +659,7 @@ names in it. BOP ships numeric `obj_id`s and no names, so this table is written 
 
 ```bash
 source .venv/bin/activate
-export FOUNDATIONPOSE_ROOT=$(realpath ../tao-foundation-pose-sdk)
+export FOUNDATIONPOSE_ROOT=$(realpath ../foundation-pose-inference-library)
 export LD_LIBRARY_PATH=".venv/lib/python3.12/site-packages/tensorrt_libs:.venv/lib/python3.12/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
 ```
 
@@ -738,7 +738,7 @@ not make its published checkpoints Apache-2.0.
 
 | Component | Code | Weights / checkpoint |
 |---|---|---|
-| TAO FoundationPose SDK | Apache-2.0, public on [GitHub](https://github.com/NVIDIA-TAO/tao-foundation-pose-sdk) | separate NGC artifact — `nvidia/tao/foundationpose:deployable_v1.0` terms, **not** Apache-2.0 |
+| FoundationPose Inference Library | Apache-2.0, public on [GitHub](https://github.com/nvidia-isaac/foundation-pose-inference-library) | separate NGC artifact — `nvidia/tao/foundationpose:deployable_v1.0` terms, **not** Apache-2.0 |
 | SAM3 | `LicenseRef-Meta-SAM` (Meta's custom SAM License, not OSI-approved) | same license, and the checkpoint is **gated** — request access at <https://huggingface.co/facebook/sam3> |
 | FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate NGC artifact — the [model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms |
 

@@ -65,7 +65,10 @@ from foundationpose_perception_pipeline.evaluation.detection import (  # noqa: E
     detection_template,
 )
 from foundationpose_perception_pipeline.evaluation.gt import GroundTruthRenderer  # noqa: E402
-from foundationpose_perception_pipeline.evaluation.report import PipelineReportConfig, write_pipeline_outputs  # noqa: E402
+from foundationpose_perception_pipeline.evaluation.report import (  # noqa: E402
+    PipelineReportConfig,
+    write_pipeline_outputs,
+)
 
 
 class _PoseOnlyResult:

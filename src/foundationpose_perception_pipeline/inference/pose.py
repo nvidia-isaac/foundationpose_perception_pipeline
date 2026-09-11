@@ -56,9 +56,9 @@ def run_foundationpose_for_proposals(
     n_hypotheses: int,
 ) -> list[PoseFilterResult]:
     """Run FoundationPose on each proposal mask and collect overlap diagnostics."""
-    # Deferred: the SDK is an external checkout whose path `ensure_foundationpose_paths`
-    # injects at start-up, so importing it at module scope would make this package
-    # unimportable on a machine that has not built it.
+    # Deferred: the FoundationPose Inference Library is an external checkout whose path
+    # `ensure_foundationpose_paths` injects at start-up, so importing it at module scope
+    # would make this package unimportable on a machine that has not built it.
     from foundation_pose_nvidia import RgbdFrame
 
     filter_results: list[PoseFilterResult] = []

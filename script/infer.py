@@ -87,7 +87,9 @@ from foundationpose_perception_pipeline.pose import (  # noqa: E402
 # External checkouts must be locatable before any model import; see `inject_external_paths`.
 inject_external_paths(REPO_ROOT, FOUNDATIONPOSE_ROOT_DEFAULT)
 from foundationpose_perception_pipeline.inference.config import InferenceConfig  # noqa: E402
-from foundationpose_perception_pipeline.inference.detect import base_text_state_from_prompt_state  # noqa: E402
+from foundationpose_perception_pipeline.inference.detect import (  # noqa: E402
+    base_text_state_from_prompt_state,
+)
 from foundationpose_perception_pipeline.inference.pose import run_foundationpose_for_proposals  # noqa: E402
 from foundationpose_perception_pipeline.inference.refine import apply_sam3_refinement  # noqa: E402
 from foundationpose_perception_pipeline.inference.select import (  # noqa: E402

@@ -256,7 +256,11 @@ def generate_with_engine(
     which takes a CUDA context merely by being imported, is never triggered until depth is
     actually generated.
     """
-    from foundationpose_perception_pipeline.inference.stereo import load_engine, scene_depth, write_scene_depth
+    from foundationpose_perception_pipeline.inference.stereo import (
+        load_engine,
+        scene_depth,
+        write_scene_depth,
+    )
     from foundationpose_perception_pipeline.inference.stereo.tao import release_engines
 
     try:
