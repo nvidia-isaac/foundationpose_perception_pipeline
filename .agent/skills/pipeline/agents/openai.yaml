@@ -1,4 +1,0 @@
-interface:
-  display_name: "Run Pipeline"
-  short_description: "Run one dataset end to end on the commercial engine and read out the pose metrics"
-  default_prompt: "Use $pipeline to run dataset <name> end to end on the commercial TAO Deploy engine and report the pose metrics."

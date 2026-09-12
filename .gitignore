@@ -19,8 +19,8 @@ gt_cache/
 !.gitignore
 !.gitattributes
 !.github/
-# Agent skills, and the `.claude` symlink that points at them.
-!.agent/
+# Agent discovery alias for the canonical root-level skills/ directory.
+!.agents/
 !.claude
 
 # Belt-and-braces: named explicitly so they stay ignored even if the `.*` rule above is

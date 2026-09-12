@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pipeline Setup"
-  short_description: "Prepare the pipeline environment for the commercial depth model"
-  default_prompt: "Use $setup to prepare the perception pipeline environment on the commercial TAO Deploy depth path."
