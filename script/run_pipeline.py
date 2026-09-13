@@ -202,6 +202,12 @@ def parse_args() -> argparse.Namespace:
         help="Rectified width fed to the model. Only affects the internal stereo resolution; "
              "the depth map is always emitted at full base-camera resolution.",
     )
+    parser.add_argument(
+        "--foundation-stereo-fixed-height",
+        type=int,
+        default=settings.depth.foundation_stereo_fixed_height,
+        help="Fixed height for FoundationStereo input, or None to determine dynamically.",
+    )
     # Whatever the registered backends and sources need on top of the flags above.
     add_backend_arguments(parser)
     add_source_arguments(parser)

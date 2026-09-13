@@ -17,6 +17,10 @@
 # profile they were taken on, where their scope is unambiguous. What stays here is the part that
 # transfers: what each parameter trades, and how to re-sweep it.
 
+# ONNX files live here; generated TensorRT plans live in engine_cache/ underneath.
+# Relative to this YAML file. Profile overrides are relative to the profile file.
+models_dir: ../../models
+
 detection:
   # SAM3 confidence threshold applied to proposals before matching.
   # CONVENTIONAL, not measured: a deliberately permissive floor, because the rerank stage below is
@@ -99,32 +103,37 @@ depth:
   # dataset-specific -- it depends on how much of the frame survives rectification -- so treat
   # this as a starting point and re-sweep it on a new rig.
   foundation_stereo_max_width: 800
-  # TensorRT engine for the FoundationStereo model, built from a TAO `deployable_*` export with
-  # tools/build_tao_engine.py. Unset here on purpose: an engine is machine-specific, so it
-  # belongs in a dataset profile's `overrides:` rather than in a committed default.
+  # Fixed rectified height, for a stereo plan built with a static height. Null lets the height
+  # follow the rectified pair, padded up to a multiple of 32. Paired with the width above: a
+  # static plan is built for one HxW, so set both together or neither.
+  foundation_stereo_fixed_height: null
+  # TensorRT model for the FoundationStereo stage. Accepts an ONNX source, which is compiled on
+  # demand into the shared plan cache, or a precompiled `.plan`/`.engine`/`.trt`. Unset here on
+  # purpose: a plan is machine-specific, so it belongs in a dataset profile's `overrides:` rather
+  # than in a committed default.
   #
-  # It runs through TAO Deploy in THIS process and THIS environment -- no FoundationStereo
+  # It runs through TensorRT in THIS process and THIS environment -- no FoundationStereo
   # checkout, no subprocess per scene, and no per-scene interpreter start-up, torch import or
   # checkpoint load -- only the engine deserialization, which the depth stage re-pays each scene
   # so that TensorRT's scratch is not resident during pose.
   #
-  # It is a path to an engine and not a name because an engine is machine-specific: it is built
-  # for one GPU architecture, one TensorRT version, one precision and one input shape, and none
-  # of that survives being copied to another machine. tools/build_tao_engine.py encodes all five
-  # in the filename and writes a sidecar recording the source ONNX's hash, so a stale engine is
-  # refused rather than used. Rebuild after any TensorRT upgrade -- including one driven by the
-  # FoundationPose Inference Library, which pins the same `tensorrt-cu13` version.
+  # A compiled plan is machine-specific: it is built for one GPU architecture, one TensorRT
+  # version, one precision and one input shape, and none of that survives being copied to another
+  # machine. The shared cache in `models_dir/engine_cache/` keys on exactly those, plus the source
+  # model's hash, so a stale plan is never silently reused -- a changed input produces a different
+  # cache entry rather than a wrong answer. Artifacts are otherwise treated as FIXED: replacing or
+  # re-exporting a model in place means clearing the plans built from it, including any named
+  # `.plan` you point this setting at directly.
   #
-  # The shape matters and is not a free choice: build it for the rectified size THIS dataset
-  # produces, padded up to a multiple of 32. Ask for it rather than guessing:
-  #   ./.venv/bin/python tools/build_tao_engine.py --onnx <deployable>.onnx \
+  # Leaving this null and shipping only the ONNX is the supported path; the first run compiles it.
+  # Prebuilding is worth it during development, and takes the shape from a scene rather than a
+  # guess:
+  #   ./.venv/bin/python tools/build_stereo_engine.py --onnx <deployable>.onnx \
   #       --shape-from-scene <dataset_root>/<dataset>/<split>/000000
-  # A static profile (min=opt=max) is deliberate: TAO Deploy allocates its buffers at the
-  # profile's MAX shape, so a generous dynamic profile costs memory on every scene.
+  # A static profile (min=opt=max) is deliberate: TensorRT allocates its buffers at the profile's
+  # MAX shape, so a generous dynamic profile costs memory on every scene.
   #
   # See README.md's FoundationStereo section for the install and build steps.
-  #
-  # This is the BUILT `.engine` the command above writes
   engine: null
 
   # Working volume, in metres, used to keep disparity inside FoundationStereo's 416 px search

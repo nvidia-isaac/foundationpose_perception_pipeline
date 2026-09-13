@@ -166,6 +166,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fp-n-refine", type=int, default=3)
     parser.add_argument("--foundation-stereo-model", type=Path, default=settings.depth.engine)
     parser.add_argument("--foundation-stereo-max-width", type=int, default=settings.depth.foundation_stereo_max_width)
+    parser.add_argument("--foundation-stereo-fixed-height", type=int, default=settings.depth.foundation_stereo_fixed_height)
     parser.add_argument("--depth-backend", choices=depth_backend_choices(), default="auto")
     parser.add_argument("--min-working-distance-m", type=float, default=settings.depth.min_working_distance_m)
     parser.add_argument("--max-working-distance-m", type=float, default=settings.depth.max_working_distance_m)
@@ -501,6 +502,7 @@ def run_inference(args: argparse.Namespace) -> Path:
                 "confidence_threshold": args.confidence_threshold,
                 "foundation_stereo_model": str(args.foundation_stereo_model) if args.foundation_stereo_model else None,
                 "foundation_stereo_max_width": args.foundation_stereo_max_width,
+                "foundation_stereo_fixed_height": args.foundation_stereo_fixed_height,
                 "runtime_sec_total": sum(row["runtime_sec"] for row in runtime_rows),
                 # Per-scene rows, not just the total: `evaluate.py` runs in a separate process, so
                 # this file is the only way the timings reach the summariser. Without them

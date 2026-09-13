@@ -8,7 +8,7 @@ FoundationPose consumes. Scoring it against a collected ground-truth map is a se
 activity that lives in `evaluation/`.
 
 **One backend ships, and it is a registry entry like any other.** `commercial` runs a TAO
-`deployable_*` export as a TensorRT engine through TAO Deploy, in this environment and this
+`deployable_*` export as a TensorRT engine through TensorRT, in this environment and this
 process -- see `foundationpose_perception_pipeline.inference.stereo`. A function call, not a process: no
 interpreter start-up, no torch import, no CUDA context creation per scene, and the depth comes
 back as arrays rather than through a `.npy` round-trip. What it does still re-pay per scene is
@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-ENGINE_SUFFIXES = (".engine", ".trt")
+ENGINE_SUFFIXES = (".engine", ".trt", ".plan", ".onnx")
 
 COMMERCIAL_BACKEND = "commercial"
 AUTO_BACKEND = "auto"
@@ -124,7 +124,7 @@ def backend_forwarded_flags(args: Any) -> dict[str, Any]:
 
 
 def is_engine(model: Path | str | None) -> bool:
-    """Whether a model path names a TensorRT engine, i.e. selects the shipped backend."""
+    """Whether a path names an ONNX source or a precompiled TensorRT engine."""
     return model is not None and Path(model).suffix.lower() in ENGINE_SUFFIXES
 
 
@@ -151,11 +151,10 @@ def _active_profile_hint() -> str:
 def resolve_backend(model: Path | str | None, requested: str = AUTO_BACKEND) -> str:
     """Name the backend a model selects, and refuse a request that contradicts it.
 
-    The model path stays the single source of truth -- a `.engine` is the shipped model and
-    nothing else is -- so `--depth-backend` does not choose anything. It *asserts*, which is the
-    useful half: "which licence is this run under" should be answerable without reading a file
-    extension, and a run that believes it is one thing and silently is another is exactly the
-    mistake worth failing on.
+    The model path stays the single source of truth -- the suffix says which backend runs it -- so
+    `--depth-backend` does not choose anything. It *asserts*, which is the useful half: "which
+    licence is this run under" should be answerable without reading a file extension, and a run
+    that believes it is one thing and silently is another is exactly the mistake worth failing on.
     """
     backends = registered_backends()
     choices = depth_backend_choices()
@@ -166,29 +165,15 @@ def resolve_backend(model: Path | str | None, requested: str = AUTO_BACKEND) -> 
     claimed = [backend.name for backend in backends.values() if backend.claims(path)]
     if not claimed:
         known = ", ".join(f"{b.name} ({b.describe})" for b in backends.values() if b.describe)
-        # Anything that is not a `.engine` gets the specific message, not the generic one. The
-        # mistake people actually make is naming the ONNX -- they fetch the export, build the
-        # engine beside it, then paste the path already in their shell history -- but a `.pth`,
-        # a directory or a typo all land here too, and "no backend handles this" tells none of
-        # them what the depth stage actually wants. Reached only when no backend claimed the
-        # path, so a registered backend that legitimately takes another suffix is unaffected.
-        if path is not None and path.suffix != ".engine":
-            engines = sorted(path.parent.glob(f"{path.stem}__*.engine")) or sorted(
-                path.parent.glob("*.engine")
-            )
-            found = f" Found in the same directory: {engines[0].name}" if engines else ""
-            raise SystemExit(
-                f"{model} is not a TensorRT engine, and no registered backend claims it. "
-                f"Registered: {known or 'none'}. Build an engine with `tools/build_tao_engine.py "
-                f"--onnx <deployable>.onnx --shape-from-scene <scene_dir>`; it writes a `.engine` "
-                f"beside the ONNX. Point --foundation-stereo-model or depth.engine at that "
-                f"file.{found}"
-            )
+        # Reached only for a path no backend recognises -- an unset model resolves to the
+        # conventional stereo model under MODELS_DIR and never lands here. In practice that means
+        # a typo, a directory, or a checkpoint (`.pth`) where an export was expected.
         raise SystemExit(
-            f"No depth backend handles {model or 'an unset model'}. Registered: {known or 'none'}. "
-            f"Build an engine with `tools/build_tao_engine.py --shape-from-scene <scene_dir>`, "
-            f"then either pass it with --foundation-stereo-model or set `depth.engine` under "
-            f"`overrides: depth:` in {_active_profile_hint()}."
+            f"No depth backend handles {model}. Registered: {known or 'none'}. The depth stage "
+            f"takes an ONNX export or a precompiled plan ({', '.join(sorted(ENGINE_SUFFIXES))}); "
+            f"build one with `tools/build_stereo_engine.py --shape-from-scene <scene_dir>`. Pass "
+            f"it with --foundation-stereo-model, or set `depth.engine` under `overrides: depth:` "
+            f"in {_active_profile_hint()}."
         )
     if len(claimed) > 1:
         raise SystemExit(f"{model} is claimed by more than one depth backend: {', '.join(claimed)}")
@@ -243,6 +228,7 @@ def generate_with_engine(
     depth_dir: Path,
     model: Path | None,
     max_width: int,
+    fixed_height: int | None = None,
     base_camera: int = 0,
     min_working_distance_m: float | None = None,
     max_working_distance_m: float | None = None,
@@ -250,23 +236,26 @@ def generate_with_engine(
     clahe_detail_boost: float = 0.0,
     **_ignored: Any,
 ) -> Path:
-    """Depth for one scene, through TAO Deploy, in this process.
+    """Depth for one scene, through TensorRT, in this process.
 
-    The stereo package is imported here rather than at module scope so that `pycuda.autoinit`,
-    which takes a CUDA context merely by being imported, is never triggered until depth is
-    actually generated.
+    Imports are deferred until depth generation is requested.
     """
     from foundationpose_perception_pipeline.inference.stereo import (
         load_engine,
+        release_engines,
         scene_depth,
         write_scene_depth,
     )
-    from foundationpose_perception_pipeline.inference.stereo.tao import release_engines
 
     try:
+        model_str = str(Path(model).expanduser().resolve()) if model is not None else None
         result = scene_depth(
             scene_dir,
-            engine=load_engine(str(Path(model).expanduser().resolve())),  # type: ignore[arg-type]
+            engine=load_engine(
+                model_str,
+                max_width=max_width,
+                fixed_height=fixed_height,
+            ),
             base_camera=base_camera,
             max_width=max_width,
             min_working_distance_m=min_working_distance_m,
@@ -279,8 +268,8 @@ def generate_with_engine(
         # Release before returning, because the caller's next move is the pose stage and the two
         # cannot both be resident. FoundationStereo's TensorRT scratch is 10-13 GB depending on
         # the profile; holding it across a run makes peak memory the SUM of the stages instead of
-        # the max, and SAM3 dies with `torch.OutOfMemoryError` a few scenes in. Measured on a
-        # 32 GB card: 30.1 GB in use with only 3.8 GB of it torch's.
+        # the max, and the detection stage runs out of device memory a few scenes in. Measured on
+        # a 32 GB card when this was first hit: 30.1 GB in use.
         #
         # The cost is re-deserializing the engine next scene, about 1.4 s against ~32 s of
         # per-scene work. A caller that owns the whole GPU -- a depth-only sweep, a test --
@@ -291,7 +280,7 @@ def generate_with_engine(
 register_backend(
     DepthBackend(
         name=COMMERCIAL_BACKEND,
-        claims=is_engine,
+        claims=lambda model: model is None or is_engine(model),
         generate=generate_with_engine,
         describe="a TensorRT engine built from a TAO deployable export",
     )

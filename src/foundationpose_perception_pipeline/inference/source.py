@@ -103,6 +103,7 @@ def provide_predicted_depth(
         scene_dir=scene_dir,
         depth_dir=depth_dir,
         max_width=args.foundation_stereo_max_width,
+        fixed_height=args.foundation_stereo_fixed_height,
         model=args.foundation_stereo_model,
         overwrite=args.overwrite_depth,
         backend=getattr(args, "depth_backend", "auto"),

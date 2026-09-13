@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Stereo depth from the commercially-licensable FoundationStereo model, via TAO Deploy.
+"""Stereo geometry and native TensorRT inference for TAO FoundationStereo exports.
 
-This is the depth path that ships. It runs a TAO `deployable_*` export as a TensorRT engine,
-in the pipeline's own environment and in the pipeline's own process -- no FoundationStereo source
-checkout, no second venv, no subprocess per scene.
+Importing this package must not require CUDA. The geometry half -- rectification, disparity
+conversion, the scene layout -- is pure NumPy/OpenCV and is used by tooling that never touches
+a GPU (`tools/bop_adapt/partners.py`, for one). The inference half reaches
+`inference/trt.py`, which imports `tensorrt` and `cuda.bindings` at module scope.
 
-    from foundationpose_perception_pipeline.inference.stereo import load_engine, scene_depth, write_scene_depth
-
-    depth = scene_depth(scene_dir, engine=load_engine(engine_path), max_width=800)
-    write_scene_depth(depth, out_dir)
-
-
-Requires `nvidia-tao-deploy` and `pycuda`, installed out-of-band -- see README.md's
-FoundationStereo section, and pyproject.toml for why they are not a `uv` extra. Nothing in this
-package is imported unless a caller asks for it, so a checkout without them still works for every
-other stage.
+So the TensorRT-backed names are resolved on first attribute access rather than at import.
+`from ...stereo import FoundationStereoTrtProcessor` still works and still fails loudly if
+TensorRT is missing; `from ...stereo import fit_to_model` no longer fails at all.
 """
+
+from typing import TYPE_CHECKING, Any
 
 from foundationpose_perception_pipeline.inference.stereo.build import (
     ShapeProfile,
@@ -27,24 +23,46 @@ from foundationpose_perception_pipeline.inference.stereo.build import (
 from foundationpose_perception_pipeline.inference.stereo.depth import (
     SceneDepth,
     StereoDepthError,
+    disparity_to_depth_m,
+    fit_to_model,
     scene_depth,
     write_scene_depth,
 )
-from foundationpose_perception_pipeline.inference.stereo.tao import (
-    StereoEngine,
-    load_engine,
-    normalize_for_model,
+
+if TYPE_CHECKING:
+    from foundationpose_perception_pipeline.inference.stereo.trt_processor import (
+        FoundationStereoTrtProcessor,
+        load_engine,
+        normalize_for_model,
+        release_engines,
+    )
+
+_TRT_EXPORTS = frozenset(
+    {"FoundationStereoTrtProcessor", "load_engine", "normalize_for_model", "release_engines"}
 )
 
+
+def __getattr__(name: str) -> Any:
+    """Resolve the TensorRT-backed exports lazily -- see the module docstring."""
+    if name not in _TRT_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from foundationpose_perception_pipeline.inference.stereo import trt_processor
+
+    return getattr(trt_processor, name)
+
+
 __all__ = [
+    "FoundationStereoTrtProcessor",
     "SceneDepth",
     "ShapeProfile",
     "StereoDepthError",
-    "StereoEngine",
     "build_engine",
+    "disparity_to_depth_m",
     "engine_path_for",
+    "fit_to_model",
     "load_engine",
     "normalize_for_model",
+    "release_engines",
     "scene_depth",
     "write_scene_depth",
 ]

@@ -7,7 +7,7 @@ One-time per machine, per shape, per precision. The engine is not portable acros
 architecture or TensorRT version and must not be committed; the filename encodes both so a stale
 one is never picked up silently.
 
-    ./.venv/bin/python tools/build_tao_engine.py \\
+    ./.venv/bin/python tools/build_stereo_engine.py \\
         --onnx ../models/deployable_foundation_stereo_s_dynamic_v2.0.onnx \\
         --shape-from-scene <dataset_root>/<dataset>/<split>/000000
 
@@ -36,9 +36,8 @@ which for the default 800 px width lands at 480x800 on a 16:9-ish rig. That is a
 for one class of rig and not a default for yours -- the rectified height depends on how much of
 the frame survives rectification, which is a property of the stereo pair's geometry.
 
-A static profile (min=opt=max) is the default because TAO Deploy allocates its buffers at the
-profile's MAX shape, so a generous dynamic profile costs memory on every scene. See README.md's
-FoundationStereo section.
+A static profile (min=opt=max) keeps the execution shape and memory requirements predictable.
+See README.md for the native TensorRT runtime.
 """
 
 from __future__ import annotations
@@ -51,6 +50,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from foundationpose_perception_pipeline.config import add_config_argument, settings_from_argv
+from foundationpose_perception_pipeline.inference.models import STEREO_MODEL, ModelPaths
 from foundationpose_perception_pipeline.inference.stereo.build import (
     PRECISIONS,
     ShapeProfile,
@@ -114,7 +114,8 @@ def main() -> None:
     settings = settings_from_argv()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_config_argument(parser)
-    parser.add_argument("--onnx", type=Path, required=True, help="TAO deployable_*.onnx export")
+    parser.add_argument("--onnx", type=Path, default=None,
+                        help="Stereo ONNX export; defaults to the conventional name under MODELS_DIR.")
     parser.add_argument("--shape", type=str, default=None, help="Static input shape as HxW (multiple of 32)")
     parser.add_argument(
         "--shape-from-scene",
@@ -148,7 +149,8 @@ def main() -> None:
         help="Scratch-memory cap for tactic selection. Unset means TensorRT's default (the whole "
         "device), which is what this model needs -- 4096 makes it fail to build entirely.",
     )
-    parser.add_argument("--out-dir", type=Path, default=None, help="Defaults to beside the ONNX.")
+    parser.add_argument("--models-dir", type=Path, default=settings.models_dir,
+                        help="Model directory; compiled plans go in its engine_cache/ subdirectory.")
     parser.add_argument("--force", action="store_true", help="Rebuild even if a matching engine exists.")
     args = parser.parse_args()
 
@@ -172,10 +174,10 @@ def main() -> None:
         profile = ShapeProfile(parse_shape(args.min), parse_shape(args.opt), parse_shape(args.max))
 
     path = build_engine(
-        args.onnx,
+        args.onnx or ModelPaths.configured(args.models_dir).onnx(STEREO_MODEL),
         profile=profile,
         precision=args.precision,
-        out_dir=args.out_dir,
+        models_dir=args.models_dir,
         workspace_mb=args.workspace_mb,
         tf32=not args.no_tf32,
         force=args.force,

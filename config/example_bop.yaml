@@ -127,7 +127,7 @@ regression:
 # every run; without either, a run stops at launch and says so. Build it first, and take the
 # shape from the scene rather than choosing one:
 #
-#   ./.venv/bin/python tools/build_tao_engine.py --onnx <deployable>.onnx \
+#   ./.venv/bin/python tools/build_stereo_engine.py --onnx <deployable>.onnx \
 #       --shape-from-scene <root>/<dataset>/<split>/000000
 #
 # `--shape-from-scene` takes a path, not a profile, so it does not read `split` for you --
@@ -135,7 +135,7 @@ regression:
 #
 # overrides:
 #   depth:
-#     engine: ../../models/<the .engine build_tao_engine.py wrote>   # relative to THIS file
+#     engine: ../../models/<the .engine build_stereo_engine.py wrote>   # relative to THIS file
 #     # THE WORKING VOLUME IS THE OTHER KEY A DIFFERENT RIG MUST SET, and getting it wrong does
 #     # not fail -- disparity CLAMPS past the model's range, which puts a surface too far away in
 #     # a depth map that still looks entirely plausible. Set it to the actual bin, tightly.

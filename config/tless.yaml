@@ -187,7 +187,7 @@ overrides:
     # --foundation-stereo-model per run. Without one, a run stops at launch saying so.
     #
     # Build it first, and ASK for the shape rather than choosing one:
-    #   ./.venv/bin/python tools/build_tao_engine.py --onnx <deployable>.onnx \
+    #   ./.venv/bin/python tools/build_stereo_engine.py --onnx <deployable>.onnx \
     #       --shape-from-scene ../../bop_adapted/tless/test/000000
     #
     # Why ask: T-LESS rectifies to a width that is not a multiple of 32, and the runtime RESIZES
@@ -197,7 +197,7 @@ overrides:
     #
     # Path is relative to THIS file, so `../../models/` is the sibling `models/` directory in
     # README.md's layout. See README.md section 2.4.
-    # engine: ../../models/<the .engine build_tao_engine.py wrote>
+    # engine: ../../models/<the .engine build_stereo_engine.py wrote>
   rerank:
     # Weights are NOT the shipped defaults. They were fitted by searching the three free weights
     # plus the fp_score divisor against occlusion-aware GT at mask IoU 0.5, with

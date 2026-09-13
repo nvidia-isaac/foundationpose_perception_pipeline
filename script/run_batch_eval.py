@@ -140,6 +140,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=settings.depth.foundation_stereo_max_width,
     )
+    parser.add_argument(
+        "--foundation-stereo-fixed-height",
+        type=int,
+        default=settings.depth.foundation_stereo_fixed_height,
+    )
     # Whatever the registered backends and sources need; forwarded to every dataset below.
     add_backend_arguments(parser)
     add_source_arguments(parser)
@@ -256,6 +261,8 @@ def run_dataset(args: argparse.Namespace, dataset: str, shared_engine_cache_dir:
     # stays true when a new one is registered.
     if registered_sources()[args.depth_source].uses_depth_backend:
         cmd.extend(["--foundation-stereo-max-width", str(args.foundation_stereo_max_width)])
+        if args.foundation_stereo_fixed_height is not None:
+            cmd.extend(["--foundation-stereo-fixed-height", str(args.foundation_stereo_fixed_height)])
         for flag, value in backend_forwarded_flags(args).items():
             cmd.extend([flag, str(value)])
         if args.foundation_stereo_model is not None:
