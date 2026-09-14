@@ -71,7 +71,6 @@ class RefinementConfig:
     low_miou: float
     high_miou: float
     nms_threshold: float
-    device: str = "cuda"
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> RefinementConfig:
@@ -81,7 +80,6 @@ class RefinementConfig:
             low_miou=float(args.refinement_low_miou),
             high_miou=float(args.refinement_high_miou),
             nms_threshold=float(args.refinement_nms_threshold),
-            device=str(getattr(args, "device", "cuda")),
         )
 
 

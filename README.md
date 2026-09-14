@@ -8,11 +8,13 @@ optionally refines and reranks the proposal set, and scores everything against o
 ground truth. Depth is first because SAM3's scene state is built at the depth map's resolution —
 see [ARCHITECTURE.md](ARCHITECTURE.md) for the call sequence.
 
+Commands below assume the repository root and an activated environment. Replace angle-bracket
+placeholders with your own paths/names before running them.
+
 This file covers **installing, configuring and running** it. For how it is put together — module
 layout, the inference/evaluation split, the pose metric, the optional refinement and rerank
 stages, and the output artifacts — see
-**[ARCHITECTURE.md](ARCHITECTURE.md)**. Those two files are the whole of the documentation; every
-other explanation lives in a comment beside the code it describes.
+**[ARCHITECTURE.md](ARCHITECTURE.md)**. The local agent guides under `.agent/skills/` provide setup and run procedures.
 
 **Contents:** [Requirements](#1-requirements) · [Install](#2-install) · [Verify](#3-verify-the-install) ·
 [Quickstart](#4-quickstart) · [Configuration](#5-configuration) ·
@@ -36,26 +38,10 @@ Contributions are welcome. All commits must be signed off under the Developer Ce
   ldd --version | head -1                                     # want >= 2.38
   strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep -c GLIBCXX_3.4.31   # want 1
   ```
-- **GPU memory: 24 GB is a sensible floor, 32 GB is what this was tested on** — but treat that as
-  a starting point and measure your own, because peak memory is a property of your data, not of
-  the pipeline. On the captures it was profiled against it peaked at **16.8–17.4 GiB** (sampled every 200 ms
-  through complete runs on an RTX 5000 Ada). Three things move that number:
-  - **Instances in flight per scene** — the largest term, and the one your dataset controls.
-    FoundationPose sets the peak and carries state per proposal, so a crowded scene costs
-    materially more than a sparse one.
-  - **Depth engine input shape** — TensorRT scratch scales with it, so a wider rectified image
-    costs more (`depth.foundation_stereo_max_width`, default `800`).
-  - **`--fp-n-hypotheses` / `--fp-prepare-batch` / `--fp-n-refine`** (`64` / `64` / `3`) —
-    lowering these trades pose accuracy for memory, and is the first knob to reach for if a run
-    will not fit.
-
-  Size for FoundationPose, not for depth: the depth engine is released between scenes, so its
-  scratch never coincides with the pose stage. To measure your own, run your densest scene under
-  `nvidia-smi --query-gpu=memory.used --format=csv,noheader -lms 200`.
-
-  Note a **dynamic-profile** depth engine reserves ~3 GB more scratch than a static one and has
-  been seen to fail allocating its execution context on a dense scene set even on a 32 GB card —
-  §2.4 builds a static engine sized to your rig, which is the supported path.
+- **GPU memory depends on engine shapes and scene complexity.** Stereo is released before
+  pose; SAM3 retains its scene features on the GPU. The box-prompt decoder is loaded on first
+  refinement use and shares the vision/text features, but has its own TensorRT weights and
+  execution context. Measure peak memory on the target GPU.
 - **Disk: budget by scene count, not by dataset count.** Depth is cached as three float32 arrays
   per scene at the base camera's resolution (`depth_m.npy`, `depth_rectified_m.npy`,
   `disparity_px.npy`), and they persist by design — `--overwrite-depth` exists precisely so a
@@ -76,9 +62,10 @@ Expected checkout layout — the default config paths assume it:
 <parent>/
   pipeline/            this repo
     .venv/                   Python 3.12
-  sam3/
+  sam3/                export-only source checkout
   foundation-pose-inference-library/
-  models/              the NGC depth export (§2.4) — a directory of files, not a checkout
+  models/              configurable ONNX/vocabulary directory, not a checkout
+    engine_cache/      stereo and SAM3 TensorRT plans
   <your datasets>/     wherever you like; `dataset.root` in the profile points at it (§5)
 ```
 
@@ -93,7 +80,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 cd pipeline
 uv venv --python=3.12
-uv sync --extra foundationpose   # exactly what uv.lock pins: torch cu128 + the FP runtime libs
+uv sync
 
 source .venv/bin/activate   # every `python ...` below assumes this
 ```
@@ -130,12 +117,13 @@ package is already installed, so this only bites a **fresh** one — which is wh
 machines and not the author's. The symptom is `ModuleNotFoundError: No module named
 'pkg_resources'` from `sam3/model_builder.py`.
 
-### 2.2 SAM3
+### 2.2 SAM3 source and checkpoint (export only)
 
 ```bash
 cd ..
 git clone https://github.com/facebookresearch/sam3
 cd sam3
+git checkout 96914d2425f90a64f45ca977c2b5165418099543
 uv pip install --python ../pipeline/.venv/bin/python -e .
 cd ../pipeline
 ```
@@ -147,14 +135,11 @@ The SAM3 checkpoint is **gated**. Request access at
 hf auth login
 ```
 
-The checkpoint (`sam3.pt`, 3.45 GB) downloads into `~/.cache/huggingface/hub/` on first use.
+Download the checkpoint (`sam3.pt`, 3.45 GB) from the gated repository before running the exporter.
 `sam3` is deliberately not a declared dependency — it is a sibling checkout, and a bare `sam3` on
 PyPI is a different package.
 
-**Which revision has been tested on.** SAM3 has no version this project can
-pin through `uv.lock`, so it is the one input that can change while the lockfile stays fixed — and
-it moves results: two checkouts a fortnight apart produced detection counts one proposal apart on
-identical images. This pipeline has been tested on:
+**Export source revision.** The wrappers target the following source/checkpoint combination:
 
 | | |
 |---|---|
@@ -162,8 +147,10 @@ identical images. This pipeline has been tested on:
 | `facebook/sam3` checkpoint revision | `3c879f39826c281e95690f02c7821c4de09afae7` |
 | `sam3.pt` sha256 | `9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e` |
 
-Nothing checks this and nothing is enforced — a newer revision is a reasonable thing to run, and
-`tools/verify_sam3.py` prints the commit it found so you can record yours.
+The exporter calls upstream internal APIs, so changing revisions requires reviewing the wrappers
+and validating outputs. `tools/verify_sam3.py` checks the exported TensorRT runtime; it does not
+inspect the SAM3 source revision. Deployment with exported artifacts does not import the SAM3
+checkout or require checkpoint authentication. Torch remains a declared project dependency.
 
 > **After this point, always use `uv sync --inexact`.** A plain `uv sync` makes the environment
 > match `uv.lock` *exactly*, and because sam3 is installed out-of-band it counts as extraneous —
@@ -195,20 +182,18 @@ The pipeline calls FoundationPose **in-process** through its Python bindings
 through `run_dev.sh`/Docker, so the pipeline venv needs its own copies of what that `.so` links
 against:
 
-`uv sync --extra foundationpose` in §2.1 already installed those (`tensorrt-cu13`,
-`nvidia-cuda-runtime`). If you synced without the extra, add it now:
+`uv sync` in §2.1 already installed those (`tensorrt-cu13`, `nvidia-cuda-runtime`) — they are core
+dependencies, so nothing extra is needed here. If the venv has drifted, re-sync:
 
 ```bash
 cd ../pipeline
-uv sync --inexact --extra foundationpose
+uv sync --inexact
 ```
 
-Two details, both of which bite otherwise:
-
-- **`--extra foundationpose`, not a bare `uv pip install`.** These libraries are declared in
-  `pyproject.toml` so they are lock-managed; installing them ad-hoc means the next `uv sync`
-  prunes them and the pose stage breaks.
-- **`--inexact`.** Without it this very command uninstalls the sam3 you just installed in §2.2.
+**`--inexact` matters.** Without it this very command uninstalls the sam3 you installed in §2.2.
+Install these through `uv sync` rather than a bare `uv pip install`: they are declared in
+`pyproject.toml` and lock-managed, so an ad-hoc install is pruned by the next sync and the pose
+stage breaks.
 
 
 Check nothing is still missing:
@@ -233,106 +218,125 @@ path: an unset variable produces a clear error rather than silently pointing som
 
 ### 2.4 FoundationStereo
 
-Depth comes from a TAO `deployable_*` export, run as a TensorRT engine through
-[TAO Deploy](https://github.com/NVIDIA-TAO/tao-deploy) in this venv and this process — no
-FoundationStereo source checkout and no second environment. The model carries the
-[NGC model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms;
-see [ARCHITECTURE.md → The environments](ARCHITECTURE.md#the-environments) for how it fits
-together.
+Use the TAO `deployable_foundation_stereo_s_dynamic_v2.0` ONNX from the
+[NGC model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo).
+The pipeline runs the compiled engine directly through TensorRT and `cuda.bindings.runtime`.
+Model terms remain those of the NGC artifact.
 
-Two packages to install, and an engine to build once per machine.
+Place the ONNX and any external weights in the configured model directory (see
+[model configuration](#model-directory-and-engine-cache)). With `depth.engine: null`, the default
+filename is `deployable_foundation_stereo_s_dynamic_v2.0.onnx`.
 
-**Prerequisite: a CUDA toolkit**, not just the pip CUDA runtime wheels. `pycuda` ships as an
-sdist only, so pip compiles it; its extension binds the CUDA driver API and needs `cuda.h` and
-the link libraries. Its `setup.py` finds them by locating `nvcc` on `PATH`, so:
-
-```bash
-nvcc --version    # if this fails, install a CUDA toolkit or set CUDA_ROOT=/usr/local/cuda-XX.Y
-```
+Nothing else is required here: the runtime compiles a static profile from the actual padded
+stereo input shape on the first cache miss, so a normal run in §3 builds it. That first
+compilation can take a long time, and another input shape can require another plan, so
+prebuilding is worth it during development:
 
 ```bash
-# --no-deps is required, not cautious: nvidia-tao-deploy pins scipy==1.17.1, which requires
-# numpy>=2 and would break sam3. That conflict is also why these are NOT a `uv` extra -- see the
-# comment above `[project.optional-dependencies]` in pyproject.toml.
-uv pip install --python .venv/bin/python --no-deps nvidia-tao-deploy==7.1.0
-uv pip install --python .venv/bin/python pycuda
+python tools/build_stereo_engine.py --config <profile> \
+  --shape-from-scene <dataset-root>/<dataset>/<split>/000000
 ```
 
-`--no-deps` skips all 38 of its pins, two of which it genuinely imports at module scope
-(`omegaconf`, `matplotlib`). Those are project dependencies, so §2.1's `uv sync` already installed
-them — nothing extra to run. If the first depth call fails with `ModuleNotFoundError: No module
-named 'omegaconf'` from inside `nvidia_tao_deploy`, run `uv sync --inexact --extra foundationpose`
-once.
-
-Fetch a deployable export from the NGC model page. Any of them work — the page carries several,
-and which one you want is a real choice.
-
-**The export this pipeline is developed and measured against is
-`deployable_foundation_stereo_s_dynamic_v2.0`.** Numbers quoted anywhere in this repository
-correspond to that one; a different export is a supported choice but not a comparable measurement.
-
-
-| Export | Build with | Trade-off |
-|---|---|---|
-| **dynamic** (`*_dynamic_*.onnx`) | `--shape-from-scene <scene_dir>` | Preferred. Its input dims are free, so the engine can be built for the size *your* rig rectifies to. |
-| **fixed-shape** (`*_320x736_*.onnx`, `*_576x960_*.onnx`, …) | `--shape 320x736` | The size is baked into the export. Build at that size; the pipeline then resamples every rectified pair to reach it. |
-
-Where you put the file is up to you: nothing resolves it by convention, it is only the `--onnx`
-argument below. These commands assume a `models/` directory beside this repo.
-
-Then build the engine **once per machine**:
+The command prints a fingerprinted `.plan` under `models_dir/engine_cache/`. It shares the
+runtime's builder and cache key: identical source, profile and build options reuse the same plan.
+Prebuilding from a scene derives a shape suitable for fixed-width fitting; automatic mode pads
+the actual input. Those shapes can differ, so pass the printed plan explicitly when you want
+that exact prebuilt profile:
 
 ```bash
-python tools/build_tao_engine.py \
-    --onnx ../models/<your-deployable-export>.onnx \
-    --shape-from-scene ../<your-dataset>/<split>/000000
+python script/run_pipeline.py --config <profile> --dataset <dataset> \
+  --foundation-stereo-model /srv/perception/models/engine_cache/<printed-plan>.plan
 ```
 
-Exactly one of `--shape HxW`, `--shape-from-scene <scene_dir>` or `--min`/`--opt`/`--max` is
-required — the tool will not guess a size. `<split>` is the profile's `dataset.split`: the
-flag takes a path rather than resolving one, so `--config` supplies the width, not the scene.
+Alternatively set `overrides.depth.engine` to that path. A nonstandard ONNX path is accepted
+through the same setting/flag. `build_stereo_engine.py --onnx <source>.onnx --models-dir <directory>`
+overrides the source and model root; generated plans still go in that root's `engine_cache/`.
 
-`--shape-from-scene` runs the real rectification to find the input size this dataset produces, so
-the engine is built for what it will actually be fed. Expect a few minutes. The engine is written
-beside the ONNX unless `--out-dir` says otherwise, and its path is printed at the end.
+For a known input size, use `--shape HxW`; both dimensions must be positive multiples of 32.
+Dynamic profiles use `--min HxW --opt HxW --max HxW`. Choose exactly one shape mode.
+FP32 with TF32 permitted is the default. `--precision fp16` or `bf16`, `--no-tf32`,
+`--workspace-mb` and `--force` are optional build controls. Different build options produce
+different cache keys. Fixed plans resize by width and pad height; a pair that is still too tall
+after that is cropped, with a warning naming the rows lost. Rebuild a suitable profile when the
+rig or fitting requirements change.
 
-A TensorRT engine is **not portable** — it is specific to the GPU architecture, the TensorRT
-version, the precision and the input shape. The filename encodes all of these and a sidecar
-records the source ONNX's hash, so a stale one is refused rather than used silently. Do not commit
-engines; rebuild after any TensorRT change, including one driven by the FoundationPose Inference Library, which
-pins the same `tensorrt-cu13` version.
+### 2.5 Export and build SAM3
 
-**Then tell the pipeline where it is.** No engine path is committed — one is wrong for every
-machine but the one that built it — so this is a step you have to do, and a run without it stops
-at launch saying so. Two ways, and the first is the one to prefer:
+The checkout/checkpoint in §2.2 are needed for export, not TensorRT inference. Export writes
+ONNX through `torch.onnx`, so the default `uv sync` already has everything the exporter needs.
+Export into the configured model directory:
 
-**Update the config profile.** Uncomment the `engine:` line in `config/<dataset>.yaml`'s
-`overrides:` block and point it at what the build printed. In `config/tless.yaml` it is already
-there, commented, with the surrounding comment explaining the shape:
-
-```yaml
-overrides:
-  depth:
-    engine: ../../models/<the .engine path printed above>
+```bash
+python tools/export_sam3_to_onnx.py --config <profile> --checkpoint /path/to/sam3.pt
 ```
 
-The path resolves against the **config file's** directory, not your shell's, so `../../models/`
-is the sibling `models/` directory in §1's layout. Per-dataset rather than in `defaults.yaml`,
-because the shape is a property of the rig. Once set, every run uses the commercial model without
-a flag.
+`--output-dir /path/to/models` overrides the export destination. If using that flag, configure
+the runtime to use the same directory. Export requires a CUDA device — upstream SAM3 builds two
+of its caches with a hardcoded `device="cuda"`, so a CPU model produces `Expected all tensors to
+be on the same device` on the decoder graphs. Select a GPU with `CUDA_VISIBLE_DEVICES`.
+
+The exporter calls upstream backbone and grounding forwards, uses actual feature shapes and
+sequence-first text features, and copies the matching BPE vocabulary. It produces four static,
+batch-one graphs: vision encoder, text encoder, text mask decoder and single-box decoder.
+Vision input is 1008×1008; text input is 32 tokens. Separate grounding graphs preserve the
+empty/non-empty geometric-prompt branches. Box prompts use normalized `cxcywh` and labels.
+
+No separate compilation command is required. SAM3 builds or reuses vision, text and mask-decoder
+plans when the processor is created. The box decoder builds/loads lazily on first refinement.
+
+A compiled plan is **not portable** — it is specific to the GPU architecture, the TensorRT
+version, the precision and the input shape. `engine_cache/` keys on exactly those plus the source
+model's hash, so a stale plan is never silently reused. Do not commit plans; rebuild after any
+TensorRT change, including one driven by the FoundationPose Inference Library, which pins the same
+`tensorrt-cu13` version.
+
+For precompiled deployment, use the exact conventional names below with your deployment
+TensorRT installation's `trtexec`:
+
+```bash
+MODEL_DIR=/srv/perception/models   # same directory as models_dir in your YAML
+mkdir -p "$MODEL_DIR/engine_cache"
+trtexec --onnx="$MODEL_DIR/sam3_vision_encoder.onnx" --saveEngine="$MODEL_DIR/engine_cache/sam3_vision_encoder.plan" --skipInference
+trtexec --onnx="$MODEL_DIR/sam3_text_encoder.onnx" --saveEngine="$MODEL_DIR/engine_cache/sam3_text_encoder.plan" --skipInference
+trtexec --onnx="$MODEL_DIR/sam3_mask_decoder.onnx" --saveEngine="$MODEL_DIR/engine_cache/sam3_mask_decoder.plan" --skipInference
+trtexec --onnx="$MODEL_DIR/sam3_box_decoder.onnx" --saveEngine="$MODEL_DIR/engine_cache/sam3_box_decoder.plan" --skipInference
+```
+
+These named plans take precedence over ONNX and are not automatically invalidated. Replace or
+remove them when re-exporting. `--sam3-models-dir` selects another SAM3 directory.
+
+**Before the first box-decoder build, add `libnvinfer_vc_plugin.so.10`.** No TensorRT wheel ships
+it, so that one build — and only that one — fails with `(parseFromFile): INTERNAL_ERROR: Unable
+to open library: libnvinfer_vc_plugin.so.10`. Fetch it once:
+
+```bash
+D=$(mktemp -d)
+curl -sSL -o "$D/vc.deb" https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/libnvinfer-vc-plugin10_10.16.1.11-1+cuda13.2_amd64.deb
+dpkg-deb -x "$D/vc.deb" "$D/x"
+cp "$D/x/usr/lib/x86_64-linux-gnu/libnvinfer_vc_plugin.so.10.16.1" \
+   .venv/lib/python3.12/site-packages/tensorrt_libs/libnvinfer_vc_plugin.so.10
+```
+
+Match the version to the `tensorrt-cu13` pin in `pyproject.toml` whenever that pin moves. A
+`.venv` rebuild loses the file; `uv sync` does not. `apt install libnvinfer-vc-plugin10` is
+equivalent if you have root and the CUDA repo configured.
+
+SAM3 follows `--device` (`cuda` or `cuda:N`); stereo currently uses device 0.
+Use `--device cuda:0 --fp-device-id 0` for the single-GPU pipeline.
 
 ---
 
 ## 3. Verify the install
 
-Each check is independent, and only the last one needs a dataset.
+In order, cheapest first — each is independent, and only the last one needs a dataset. A check
+that runs an engine may take a few minutes on first use if it must compile it.
 
 ```bash
-python tools/verify_sam3.py
+python tools/verify_sam3.py --sam3-models-dir /srv/perception/models
 ```
-→ ends with `SAM3 OK: model loaded from HF, forward pass ran, output tensors well-formed.`
+→ loads the exported TensorRT engines and reports `SAM3 OK (TensorRT)` when outputs are well formed.
 The printed proposal confidence is low; that is expected, the test image is a synthetic doodle.
-If it fails with `SAM3 checkpoint access failed`, request access and re-run `hf auth login`.
+Checkpoint access is required during export, not during TensorRT inference.
 
 ```bash
 python tools/verify_foundationpose.py
@@ -344,6 +348,7 @@ synchronized.`
 |---|---|
 | `... cannot open shared object file: No such file or directory` | A transitive `.so` is **missing from the search path**. Run the `ldd \| grep "not found"` check and extend `LD_LIBRARY_PATH`. |
 | `libc.so.6: version GLIBC_2.38 not found` / `libstdc++.so.6: version GLIBCXX_3.4.31 not found` | **A different failure entirely, despite surfacing through the same `ldd` check.** The library is found; the host's C/C++ runtime is too old. `LD_LIBRARY_PATH` cannot fix this — no path on the machine contains the needed glibc, and no wheel ships one. The host OS is below the floor in §1; use Ubuntu 24.04 or newer. Distinguish the two by the word **`version`** in the message. |
+| `(parseFromFile): INTERNAL_ERROR: Unable to open library: libnvinfer_vc_plugin.so.10` | Not the row above, despite the wording — no path will help. No TensorRT wheel ships this library and only the box-decoder build needs it. Fetch it once, per [§2.5](#25-export-and-build-sam3). |
 | `CUDA driver version is insufficient` | Host driver older than 580. Check `nvidia-smi`, upgrade, reboot. |
 | `FoundationPose checkout not found` | `FOUNDATIONPOSE_ROOT` unset. |
 | `FoundationPose root does not exist` / missing library or weights | `run_dev.sh build` or `download_weights.sh` did not finish. |
@@ -353,12 +358,13 @@ python tools/verify_foundationstereo.py --config <name> --engine <path>.engine
 ```
 → ends with `FoundationStereo OK: engine loaded, forward pass ran, recovered the synthetic
 disparity to within N px.` Needs the engine but **no dataset**: it runs one synthetic stereo pair
-with a known disparity through the engine and checks the answer. A working install lands within
-~0.01 px. This is what tells you the TensorRT engine, TAO Deploy and the pycuda context are all
+with a known disparity through the engine and checks the answer. The script requires error ≤ 2 px
+and a valid fraction ≥ 0.9. This is what tells you the TensorRT engine and CUDA runtime bindings are all
 working, as opposed to merely installed.
 
 `--engine` can be omitted once `depth.engine` is set in the config profile ([§5](#5-configuration));
-until then it is required, and leaving it off reports `No engine to verify` rather than guessing.
+until then it is required by this verifier, and leaving it off reports `No engine to verify`.
+The pipeline itself supports conventional model lookup with an unset `depth.engine`.
 
 One more for the depth stage, and the only check that needs a dataset:
 
@@ -367,7 +373,7 @@ python test/check_engine_depth_smoke.py --config <name> --engine <path>
 ```
 
 - `check_engine_depth_smoke.py --engine` is the only check that loads the engine, in this process,
-  the way the pipeline does. Expect `backend=tao`, `normalization=imagenet`, and a plausible
+  the way the pipeline does. Expect `backend=tensorrt`, `normalization=imagenet`, and a plausible
   valid fraction.
 - **`--dataset` is optional and defaults to the profile's `regression.clean_dataset`** — which is
   why the command above names no dataset. Pass it when the one you are about to run is not that
@@ -376,13 +382,13 @@ python test/check_engine_depth_smoke.py --config <name> --engine <path>
   `clean_dataset` says so rather than guessing.
 - **Re-run it after any change to the depth stage.** It needs one scene and the engine, and it is
   the only check that exercises the depth path end to end, in this process, the way a run does.
-  The three `tools/verify_*.py` commands stay valid as install checks and cost seconds; re-run
-  those after any environment change.
+  The three `tools/verify_*.py` commands are install checks; account for possible compilation
+  when estimating their first-run time.
 
 **None of the checks on this page is an accuracy gate.** They establish that a stage runs, not
 that it is right. Accuracy is established by running a dataset and comparing `pose_summary.json`
-against a saved baseline, and there is no substitute: FoundationPose is not bit-reproducible run
-to run, so only `raw` detection counts can be compared exactly.
+against a saved baseline. Compare raw proposals as well as poses; do not assume bitwise
+agreement across TensorRT builds, precisions or changed exports.
 
 ```bash
 python test/check_engine_depth_smoke.py --config <name> --dataset <name> --engine <path>
@@ -427,7 +433,7 @@ editing a `.py` file.
 
 | File | One per | Holds |
 |---|---|---|
-| `defaults.yaml` | repo | Algorithm behaviour: thresholds, rerank, refinement, depth. Read on every run. |
+| `defaults.yaml` | repo | Model directory and algorithm behaviour: thresholds, rerank, refinement, depth. |
 | `<dataset>.yaml` | dataset | Where the data is, what the objects are called, which dataset the checks default to (`regression.clean_dataset`), and any `overrides:`. |
 | `example_bop.yaml` | — | Annotated template. Not a profile; copy it to make one. |
 
@@ -446,10 +452,69 @@ ignored, which made a misindented line indistinguishable from a setting that had
 error names the offending key, and when the same key exists under a different section it says so,
 because the usual cause is a commented-out parent leaving the line attached to the section above.
 
+### Model directory and engine cache
+
+Set `models_dir` in `config/defaults.yaml`, or override it in a dataset profile:
+
+```yaml
+overrides:
+  models_dir: /srv/perception/models
+  depth:
+    engine: null
+```
+
+The shipped default is `../../models`, relative to `config/defaults.yaml`. An overridden
+relative path resolves against the profile that defines it, even when that profile is outside
+this repository. `MODELS_DIR` overrides the YAML value. `--sam3-models-dir` overrides the
+directory for SAM3; the stereo prebuild tool accepts `--models-dir`. There is no general
+`--models-dir` flag on `run_pipeline.py`: use YAML or `MODELS_DIR` for the shared root.
+
+```text
+<models_dir>/
+  deployable_foundation_stereo_s_dynamic_v2.0.onnx
+  sam3_vision_encoder.onnx
+  sam3_text_encoder.onnx
+  sam3_mask_decoder.onnx
+  sam3_box_decoder.onnx
+  bpe_simple_vocab_16e6.txt.gz
+  ... ONNX external weight files, at the relative locations recorded in each graph
+  engine_cache/
+    <model-stem>.plan                 optional user-supplied plan
+    <model-stem>__<fingerprint>.plan   automatically compiled plan
+    <model-stem>__<fingerprint>.plan.json
+    <model-stem>__<fingerprint>.lock
+```
+
+Resolution is deterministic; the runtime does not scan for the newest plan:
+
+1. An explicit stereo `--foundation-stereo-model` / `depth.engine` path is used directly.
+   It may name ONNX or a precompiled `.plan`, `.engine`, or `.trt` file.
+2. With no stereo path, or for each SAM3 component, look for
+   `engine_cache/<model-stem>.plan` under its model directory.
+3. If no named plan exists, use `<model-stem>.onnx`. Compute its cache key and reuse the
+   corresponding fingerprinted plan, or compile it on the deployment GPU.
+
+The key includes source ONNX and referenced external initializer weight contents, GPU name,
+TensorRT version, input profiles, precision, TF32 and workspace settings. Builds use a file lock
+and publish plans by atomic rename. Cache lookup still reads and fingerprints the ONNX files;
+keep them and their external weights available when using automatic mode.
+
+A named or explicitly selected plan bypasses ONNX fingerprinting. You are responsible for its
+compatibility and freshness; a bad supplied plan fails to load rather than silently rebuilding.
+Generated plans always go under the configured `models_dir/engine_cache/`, even when an explicit
+stereo ONNX lives elsewhere. SAM3's directory override also moves its cache beneath that directory.
+The model directory must be writable for automatic compilation.
+
+`depth.engine: null` selects the conventional stereo name above; it does not disable depth.
+Changing models or preprocessing does not invalidate already written scene depth automatically:
+use `--overwrite-depth`, and `--overwrite-results` for new segmentation/pose results.
+FoundationPose keeps its existing SDK cache separately, under the run's
+`foundationpose_engine_cache/` unless `--fp-engine-cache-dir` overrides it.
+
 ### Selecting a profile
 
 Every entry point that reads a profile takes `--config`, which accepts a bare name or a path.
-That now includes `tools/build_tao_engine.py`, which takes its `--max-width` default from
+That now includes `tools/build_stereo_engine.py`, which takes its `--max-width` default from
 `depth.foundation_stereo_max_width` so the engine is built for the width the pipeline will feed
 it. The rule runs the other way too, so the flag is never missing where it would do
 something: an entry point that loads no profile takes no `--config`. `tools/verify_sam3.py`
@@ -596,20 +661,17 @@ the pipeline scores one frame per scene, so 20 source scenes would otherwise giv
 frames. `--frame-stride` is a stride, not a count: the adapter takes every Nth base frame, so a
 LARGER stride yields FEWER adapted scenes.
 
-**3. Build a depth engine and point the profile at it.** No engine ships and none is committed
-(§2.4) — `config/tless.yaml` carries the `engine:` line commented out. Build one for this dataset
-and uncomment it, or the run below stops at launch:
+**3. Make the stereo ONNX available in `models_dir`.** Leave `depth.engine: null`
+to compile on first use, or prebuild for the adapted scene:
 
 ```bash
-python tools/build_tao_engine.py --onnx ../models/<deployable>.onnx \
-    --shape-from-scene ../bop_adapted/tless/test/000000
-$EDITOR config/tless.yaml     # uncomment `engine:` under overrides: depth:, paste the path
+python tools/build_stereo_engine.py --config tless \
+  --shape-from-scene ../bop_adapted/tless/test/000000
 ```
 
-Take the shape from `--shape-from-scene` rather than choosing one. T-LESS rectifies to 720x540,
-whose width is not a multiple of 32, and the runtime resizes to the engine's width rather than
-padding to it — so the height follows from the padded width. Rounding both dimensions
-independently gives a shape 32 rows short and every frame is silently cropped.
+To use that exact prebuilt profile, set `overrides.depth.engine` to the printed plan.
+Use the scene-derived shape instead of independently rounding raw image dimensions: fixed-plan
+fitting resizes by width and then pads height. An insufficient engine height is rejected.
 
 **4. Cache ground truth and run**, exactly as for any other dataset:
 
@@ -672,7 +734,7 @@ cuDNN from the wheels above, and a foreign copy on the path is what makes it die
 |---|---|
 | Precompute GT cache | `python script/build_gt_cache.py --dataset <name>` (or `--config <name> --all`) |
 | Single dataset, end to end | `python script/run_pipeline.py --dataset <name> --overwrite-results` |
-| Engine not set in the profile | `... --foundation-stereo-model <path>.engine --depth-backend commercial` |
+| Override the configured stereo model | `... --foundation-stereo-model <path>.engine --depth-backend commercial` |
 | Without reranking | `... --proposal-selection-policy all` |
 | Without CAD refinement | `... --sam3-refinement-policy none` |
 | No collected depth on this machine | `... --no-depth-metrics` |

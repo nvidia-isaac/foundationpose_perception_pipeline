@@ -61,6 +61,25 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### SAM3
+
+- **Project:** <https://github.com/facebookresearch/sam3>
+- **License:** `LicenseRef-Meta-SAM` (Meta's SAM License, not OSI-approved) —
+  <https://raw.githubusercontent.com/facebookresearch/sam3/96914d2425f90a64f45ca977c2b5165418099543/LICENSE>
+- **Copyright:** Copyright (c) Meta Platforms, Inc. and affiliates.
+- **Used in:**
+  - `tools/export_sam3_to_onnx.py` — `_exportable_geometry_forward` is an adaptation of
+    SAM3's own geometry-prompt forward pass, rewritten so the graph traces under
+    `torch.onnx.export`. Pinned to upstream revision `96914d2`.
+
+That file carries the Meta SAM License header and remains subject to it. The rest of this
+repository is Apache-2.0.
+
+The NumPy tokenizer in `src/foundationpose_perception_pipeline/inference/sam3/tokenizer.py`
+is an independent reimplementation written against SAM3's published tokenizer behaviour — the
+BPE vocabulary file it loads is a separately obtained SAM3 artifact under the license above.
+Upstream's tokenizer descends from OpenCLIP and OpenAI CLIP, both MIT.
+
 ---
 
 ## 2. Runtime dependencies
@@ -81,22 +100,23 @@ or from PyTorch's own index. They are not redistributed with this code.
 | einops | MIT | Alex Rogozhnikov | <https://github.com/arogozhnikov/einops> |
 | pycocotools | BSD-2-Clause | Piotr Dollar and Tsung-Yi Lin | <https://github.com/ppwwyyxx/cocoapi> |
 | psutil | BSD-3-Clause | Giampaolo Rodola; Jay Loden; Dave Daeschler | <https://github.com/giampaolo/psutil> |
-| omegaconf | BSD-3-Clause | Omry Yadan | <https://github.com/omry/omegaconf> |
-| matplotlib | Matplotlib License (PSF-derived) | Matplotlib Development Team; John D. Hunter | <https://github.com/matplotlib/matplotlib> |
+| regex | [Apache-2.0 additions; inherited Python license terms](https://github.com/mrabarnett/mrab-regex/blob/hg/LICENSE.txt) | regex contributors; inherited CPython/Secret Labs notices | <https://github.com/mrabarnett/mrab-regex> |
+| ftfy | Apache-2.0 | Robyn Speer | <https://github.com/rspeer/python-ftfy> |
 | setuptools | MIT | Jason R. Coombs and the Setuptools contributors | <https://github.com/pypa/setuptools> |
 
 ---
 
 ## 3. Optional and separately installed dependencies
 
-Not installed by a default `uv sync`. See [README.md](README.md) for how each is obtained.
+Not installed by a default `uv sync`. TensorRT, the CUDA runtime and the CUDA bindings are no
+longer optional -- they are declared in `[project].dependencies` and listed in section 2, because
+every inference stage is now a TensorRT engine. See [README.md](README.md) for installation.
 
 | Component | License | Project |
 |---|---|---|
 | markdown | BSD-3-Clause | <https://github.com/Python-Markdown/markdown> |
 | ruff | MIT | <https://github.com/astral-sh/ruff> |
-| pycuda | MIT | <https://github.com/inducer/pycuda> |
-| nvidia-tao-deploy | Apache-2.0 | <https://github.com/NVIDIA-TAO/tao-deploy> |
+| cuda-bindings | License terms supplied with the installed NVIDIA CUDA Python distribution | <https://github.com/NVIDIA/cuda-python> |
 | tensorrt-cu13 | NVIDIA TensorRT license terms, supplied with the package | <https://developer.nvidia.com/tensorrt> |
 | nvidia-cuda-runtime | NVIDIA CUDA Toolkit EULA | <https://docs.nvidia.com/cuda/eula/> |
 
@@ -113,7 +133,13 @@ Apache-2.0 license. Code and weights are licensed separately for every one of th
 | SAM3 | `LicenseRef-Meta-SAM` (Meta's SAM License, not OSI-approved) | same license; the checkpoint is gated — request access at <https://huggingface.co/facebook/sam3> |
 | FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate NGC artifact — the [model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms |
 
-Section 8 of [README.md](README.md) covers this category in full.
+SAM3 source/checkpoint access is needed for ONNX export; runtime uses the exported graphs or
+TensorRT plans and the copied vocabulary. See §1 for the one place upstream SAM3 source is
+adapted rather than merely used. The local tokenizer reuses upstream's BPE vocabulary and
+splitting pattern and reproduces its text-cleaning chain, `ftfy` repair included, so prompts
+tokenize to the same ids.
+Exporting or compiling model artifacts does not replace their upstream terms. Section 8 of
+[README.md](README.md) covers these artifacts.
 
 Use of this pipeline may rely on third party components or models that you must download
 separately. Those components or models are subject to the applicable open source licenses or other
@@ -127,5 +153,5 @@ rights.
 - This file lists only **direct** dependencies. Transitive dependencies installed by `pip`/`uv`
   carry their own license metadata in their respective distributions and are not re-listed here.
 - Several components bundle third-party code inside their own distributions — `torch`, `scipy`,
-  `matplotlib` and `opencv-python` among them. Consult each project's own notice files for the
+  and `opencv-python` among them. Consult each project's own notice files for the
   components it embeds.

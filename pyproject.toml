@@ -19,8 +19,11 @@ dependencies = [
   "opencv-python<5",
   "scipy<1.16",
   "pyyaml>=6",
-  # Pinned exactly, not floored: these are the versions the reported metrics were measured on,
-  # and a resolver left to its own devices picks a newer torch with a different CUDA build.
+  # Only `tools/export_sam3_to_onnx.py` imports torch -- every runtime stage is a TensorRT
+  # engine. It stays a core dependency anyway so that a plain `uv sync` can re-export SAM3
+  # without a second install step. Pinned exactly, not floored: these are the versions the
+  # exported engines were produced on, and a resolver left to its own devices picks a newer
+  # torch with a different CUDA build.
   "torch==2.10.0",
   "torchvision==0.25.0",
   "pillow>=11",
@@ -29,21 +32,25 @@ dependencies = [
   "einops>=0.8",
   "pycocotools>=2.0.10",
   "psutil>=7",
-  # `nvidia-tao-deploy` is installed with --no-deps (see the block below), which skips all 38 of
-  # its declared pins. Two of them are on the import path the depth stage actually executes:
-  # `nvidia_tao_deploy/utils/image_batcher.py` imports omegaconf, and imports
-  # `cv/depth_net/utils.py`, which imports matplotlib for a colormap. Both are at module scope,
-  # so `from nvidia_tao_deploy.cv.depth_net.inferencer import DepthNetInferencer` raises
-  # ModuleNotFoundError without them and there is no depth at all. Declared here rather than
-  # installed by hand alongside tao-deploy, because a later `uv sync` prunes anything not in the
-  # lock.
-  "omegaconf>=2.3",
-  "matplotlib>=3.8",
+  # Upstream SAM3's tokenizer splits on a `regex` pattern that `re` cannot express.
+  "regex",
+  # Upstream SAM3's `basic_clean` runs `ftfy.fix_text` before tokenizing. Our reimplementation
+  # does the same so prompt ids match upstream's exactly; see Sam3TextTokenizer. ftfy arrives
+  # transitively today, which is not something to rely on -- declare it.
+  "ftfy>=6.1",
   # sam3/model_builder.py does `import pkg_resources`, which ships inside setuptools and was
   # REMOVED in setuptools 81. Without this bound a fresh venv resolves setuptools >=81 and every
   # `import sam3` dies with ModuleNotFoundError: No module named 'pkg_resources'. Existing venvs
   # created before that release keep working, which is exactly why this is easy to miss.
   "setuptools<81",
+  # Everything that talks to the GPU: the TensorRT runtime this pipeline's own engines execute
+  # under, and what FoundationPose's libfoundation_pose_nvidia.so links against. Core, not
+  # optional: `inference/trt.py` imports `tensorrt` and `cuda.bindings` at module scope, so
+  # without these every inference path fails at import and `uv sync` alone would not give a
+  # working install.
+  "tensorrt-cu13==10.16.1.11",   # matches the inference library's TensorRT 10.16
+  "nvidia-cuda-runtime",         # provides libcudart.so.13
+  "cuda-bindings==12.9.4; sys_platform == 'linux'",
 ]
 
 # Deliberately NOT declared as dependencies:
@@ -66,45 +73,6 @@ report = ["markdown>=3.5"]
 # and 0.16.2 reports 153, with no code change. `[tool.ruff.lint] select` below fixes *which*
 # rules run; this pin fixes the implementation of them. Upgrade deliberately, not by resolver.
 dev = ["ruff==0.16.2"]
-# What FoundationPose's libfoundation_pose_nvidia.so links against. Declared as an extra rather
-# than installed ad-hoc after `uv sync`, because a later `uv sync` prunes anything not in the
-# lock -- which would silently remove these and break the pose stage.
-foundationpose = [
-  # TAO Deploy also runs on whatever TensorRT is installed and declares none itself, so this is
-  # the single place the version is pinned. Moving it means rebuilding every depth engine, which
-  # is TensorRT-version-specific.
-  "tensorrt-cu13==10.16.1.11",   # matches the inference library's TensorRT 10.16
-  "nvidia-cuda-runtime",         # provides libcudart.so.13
-]
-
-# The commercially-licensable FoundationStereo path: the NGC `deployable_*` exports run through
-# TAO Deploy, in THIS environment. See README.md's FoundationStereo section.
-#
-# DELIBERATELY NOT AN EXTRA. `nvidia-tao-deploy` pins `scipy==1.17.1`, which requires numpy>=2,
-# against this project's `scipy<1.16` (which sam3 forces). Declaring it under
-# [project.optional-dependencies] therefore makes the PROJECT unresolvable -- `uv lock` and every
-# `uv sync`, including `--extra foundationpose`, fail with "your project's requirements are
-# unsatisfiable" on a clean checkout, whether or not anyone asks for that extra. Do not
-# re-introduce it as an extra.
-#
-# Install it out-of-band instead, which is what it always needed anyway:
-#
-#   uv pip install --python .venv/bin/python --no-deps nvidia-tao-deploy==7.1.0
-#   uv pip install --python .venv/bin/python pycuda
-#
-# `--no-deps` is the point: those 38 `==` pins include scipy, mpi4py, PyInstaller, pyarmor and
-# nvidia-eff (not on public PyPI). It does mean the two it skips that ARE needed -- omegaconf and
-# matplotlib -- must come from somewhere, so they are declared as project dependencies above.
-# Everything else TAO Deploy imports on this path is already a dependency or one of these lines.
-#
-# The version is pinned because `cv/depth_net` is not usable in every release -- 6.25.10 ships no
-# `nvidia_tao_deploy/config/` at all, so its depth_net scripts cannot be imported. TensorRT comes
-# from the `foundationpose` extra; TAO Deploy declares none itself and runs on what is installed.
-#
-# pycuda is an sdist on PyPI (no wheels), so pip compiles it. Its extension is C++ over the CUDA
-# driver API -- no `.cu` files -- but it needs the CUDA toolkit's headers and link libraries, and
-# its setup.py finds them by locating `nvcc` on PATH. A CUDA toolkit install is therefore a
-# build-time prerequisite; set CUDA_ROOT if nvcc is not on PATH.
 
 # No [project.scripts]: entry points stay as plain `python script/run_pipeline.py`, so the tree
 # itself documents what is runnable. They can be added later without moving any file.

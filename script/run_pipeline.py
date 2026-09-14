@@ -57,6 +57,7 @@ from pathlib import Path
 from foundationpose_perception_pipeline.config import (
     DEFAULT_RERANK_POLICY,
     DEFAULT_SAM3_REFINEMENT_POLICY,
+    DEFAULT_SAM3_RESOLUTION,
     FOUNDATIONPOSE_ROOT_DEFAULT,
     KEEP_ALL_RERANK_POLICY,
     NO_REFINEMENT_POLICY,
@@ -127,7 +128,7 @@ def parse_args() -> argparse.Namespace:
         help="Output directory. Defaults to `pipeline/output/<dataset>`.",
     )
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--resolution", type=int, default=1008)
+    parser.add_argument("--resolution", type=int, default=DEFAULT_SAM3_RESOLUTION)
     parser.add_argument(
         "--confidence-threshold",
         type=float,
@@ -201,6 +202,12 @@ def parse_args() -> argparse.Namespace:
         default=settings.depth.foundation_stereo_max_width,
         help="Rectified width fed to the model. Only affects the internal stereo resolution; "
              "the depth map is always emitted at full base-camera resolution.",
+    )
+    parser.add_argument(
+        "--foundation-stereo-fixed-height",
+        type=int,
+        default=settings.depth.foundation_stereo_fixed_height,
+        help="Fixed height for FoundationStereo input, or None to determine dynamically.",
     )
     # Whatever the registered backends and sources need on top of the flags above.
     add_backend_arguments(parser)
@@ -336,8 +343,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fp-prepare-batch", type=int, default=64)
     parser.add_argument("--fp-n-hypotheses", type=int, default=64)
     parser.add_argument("--fp-n-refine", type=int, default=3)
-    parser.add_argument("--checkpoint-path", type=Path, default=None)
-    parser.add_argument("--no-hf", action="store_true")
+    parser.add_argument("--sam3-models-dir", type=Path, default=None, help="Directory containing exported SAM3 engines and vocabulary.")
     parser.add_argument("--overwrite-depth", action="store_true")
     parser.add_argument("--overwrite-results", action="store_true")
     parser.add_argument("--max-scenes", type=int, default=None)

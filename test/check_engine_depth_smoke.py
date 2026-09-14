@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
         "--engine",
         type=Path,
         default=settings.depth.engine,
-        help="TensorRT engine to check. Selects the TAO Deploy backend, which runs in THIS "
+        help="TensorRT engine to check. Selects the native TensorRT backend, which runs in THIS "
              "interpreter and this process -- no subprocess and no second environment. "
              "Defaults to depth.engine from the config profile.",
     )
@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def check_engine(args) -> tuple[dict, np.ndarray]:
-    """Run one scene through the TAO Deploy backend, in this process.
+    """Run one scene through the native TensorRT backend, in this process.
 
     No subprocess and no second interpreter: that is the whole point of this backend, so the
     check exercises it the way the pipeline does rather than through a CLI.
@@ -82,13 +82,13 @@ def check_engine(args) -> tuple[dict, np.ndarray]:
         )
     if not Path(args.engine).exists():
         raise SystemExit(
-            f"Engine not found: {args.engine}. Build one with tools/build_tao_engine.py -- "
+            f"Engine not found: {args.engine}. Build one with tools/build_stereo_engine.py -- "
             "engines are machine-specific and are not committed."
         )
 
     print(f"dataset    : {args.dataset}/{args.scene:06d}")
     print(f"model      : {Path(args.engine).name}")
-    print("interpreter: this one (TAO Deploy runs in-process)")
+    print("interpreter: this one (native TensorRT runs in-process)")
 
     result = scene_depth(
         scene_dir,
@@ -108,7 +108,7 @@ def main() -> None:
         )
     if args.engine is not None:
         metadata, depth = check_engine(args)
-        report_depth_result(metadata, depth, "tao", "imagenet")
+        report_depth_result(metadata, depth, "tensorrt", "imagenet")
         return
     raise SystemExit(
         "No engine. Pass --engine <path>.engine, or set depth.engine in the config profile."

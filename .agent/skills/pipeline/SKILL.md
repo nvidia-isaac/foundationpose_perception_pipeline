@@ -1,6 +1,6 @@
 ---
 name: pipeline
-description: Runs one dataset end to end (depth → SAM3 → FoundationPose) on the COMMERCIAL depth model — the TAO Deploy TensorRT engine — and reads out the pose metrics, including the flags a dataset without collected depth needs and how to prove which model actually ran. Covers adapting a BOP dataset into the pipeline's layout first, which the engine build depends on. Use when asked to run, evaluate, benchmark, or re-run a dataset, to adapt or convert a BOP dataset, to regenerate depth for one, or to compare pose results before and after a change. Environment installation is out of scope — that is the "setup" skill.
+description: Runs one dataset end to end (depth → SAM3 → FoundationPose) on the COMMERCIAL depth model — the native TensorRT stereo engine — and reads out the pose metrics, including the flags a dataset without collected depth needs and how to prove which model actually ran. Covers adapting a BOP dataset into the pipeline's layout first, which the engine build depends on. Use when asked to run, evaluate, benchmark, or re-run a dataset, to adapt or convert a BOP dataset, to regenerate depth for one, or to compare pose results before and after a change. Environment installation is out of scope — that is the "setup" skill.
 ---
 
 # Run one dataset end to end, on the commercial engine
@@ -11,10 +11,12 @@ section for the depth backend; outputs and stage flow in
 modes that are not obvious from those. Section *titles* rather than numbers, deliberately: the
 numbering is not stable across README edits.
 
-Depth comes from the NGC `deployable_*` export built as a TensorRT engine and run through TAO
-Deploy **in this process** — no second venv, no subprocess, and no per-scene interpreter start-up
-or model load. `run_pipeline.py` generates depth itself; there is no separate depth step to run
-first.
+Depth comes from the NGC `deployable_*` export, compiled and executed by native TensorRT
+in this process. Stereo is released after each scene and its plan is reloaded as needed.
+`run_pipeline.py` generates depth itself; there is no separate depth step to run first.
+
+Commands below are for an authorized run on the deployment machine. If the user asks for
+documentation or prohibits execution, describe these steps without running them.
 
 ## 0. Environment (every shell, before anything else)
 
@@ -25,7 +27,7 @@ export LD_LIBRARY_PATH="$P/tensorrt_libs:$P/nvidia/cu13/lib:$LD_LIBRARY_PATH"
 export FOUNDATIONPOSE_ROOT=$(realpath ../foundation-pose-inference-library)
 ```
 
-Skipping this fails deep in the pose stage, *after* depth has already run for every scene:
+Missing runtime libraries can fail during model loading:
 `OSError: libcudart.so.13: cannot open shared object file`. Verify cheaply before a long run:
 
 ```bash
@@ -34,7 +36,7 @@ Skipping this fails deep in the pose stage, *after* depth has already run for ev
 
 Do **not** add any other venv's libraries here.
 
-## 1. Adapt the dataset (once, and before the engine)
+## 1. Adapt the dataset (before scene-derived prebuilding or inference)
 
 Skip only if the dataset is already in the pipeline's layout — `test/<scene>/rgb/<im_id>.png`
 with one `scene_camera.json` whose im_ids are the cameras of a rig, im_id 0 being the base. A BOP
@@ -49,7 +51,7 @@ the same profile, so the adapter cannot write somewhere the run will not look. `
 selected dataset's own flags. If no module is registered for the name, it says so and lists the
 ones that are.
 
-**Do this before §2, not after.** `build_tao_engine.py --shape-from-scene` needs an adapted scene
+**Do this before §2, not after.** `build_stereo_engine.py --shape-from-scene` needs an adapted scene
 directory to measure the rectified size from, so the engine cannot be built first. The ordering
 is a real dependency, not a preference.
 
@@ -71,20 +73,29 @@ different band is a new dataset for caching purposes: rebuild the GT cache (§3)
 
 ## 2. Confirm the engine before spending an hour
 
-An engine is machine-, TensorRT-, precision- and shape-specific, and it is not committed. Check it
-exists and is loadable, on one real scene, before launching:
+Set `overrides.models_dir` in the profile (or `MODELS_DIR`). Leave `depth.engine: null`
+for conventional stereo ONNX/plan resolution; set it to an explicit ONNX or plan to override.
+SAM3 uses that same root, unless `--sam3-models-dir` overrides it.
 
-```bash
-./.venv/bin/python test/check_engine_depth_smoke.py --config <name> --dataset <name> --engine <path>.engine
+```text
+<models_dir>/*.onnx
+<models_dir>/bpe_simple_vocab_16e6.txt.gz
+<models_dir>/engine_cache/*.plan
 ```
 
-Expect `backend=tao`, `normalization=imagenet`, the engine's fixed shape, and a plausible valid
-fraction — what counts as plausible depends on how much of the frame survives rectification.
-If it reports a missing engine or a stale sidecar, build one —
-that is the setup skill's §4.3, `tools/build_tao_engine.py --shape-from-scene <scene_dir>`.
+Named `<model-stem>.plan` overrides win; otherwise ONNX is fingerprinted and a matching
+plan is reused or built. A first run or new stereo shape may compile for a long time.
+For predictable startup, prebuild stereo and select the printed plan:
 
-`--engine` defaults to `depth.engine` from the config profile, so with the profile wired up
-(setup §4.4) this command needs no path at all.
+```bash
+./.venv/bin/python tools/build_stereo_engine.py --config <name> --shape-from-scene <scene-dir>
+./.venv/bin/python test/check_engine_depth_smoke.py --config <name> --dataset <name> --engine /path/to/printed.plan
+```
+
+Expect `backend=tensorrt`, `normalization=imagenet` and plausible depth for that scene.
+Supplied plans must match the target GPU/TRT and remain your responsibility after re-export.
+The runtime rejects an insufficient fixed-plan height instead of cropping. Full lookup rules
+and optional SAM3 prebuild commands are in README. These checks do not establish accuracy parity.
 
 ## 3. Ground-truth cache (once per dataset)
 
@@ -98,11 +109,16 @@ Skipping this costs ~12–14 s per target re-rasterizing the same z-buffer.
 
 ## 4. Run it
 
+The examples below select an explicit plan. Omit `--foundation-stereo-model` to use the
+configured model directory, or pass an ONNX path to compile on demand. A warmup that only
+runs SAM3 text prompts does not build the lazy box decoder; first refinement can still compile.
+
+
 **Dataset with collected sensor depth** (a `<collected_depth_root>/<name>` directory exists):
 
 ```bash
 ./.venv/bin/python script/run_pipeline.py --dataset <name> \
-    --foundation-stereo-model <path>.engine --depth-backend commercial \
+    --foundation-stereo-model <path>.plan --depth-backend commercial \
     --overwrite-depth --overwrite-results
 ```
 
@@ -110,7 +126,7 @@ Skipping this costs ~12–14 s per target re-rasterizing the same z-buffer.
 
 ```bash
 ./.venv/bin/python script/run_pipeline.py --dataset <name> \
-    --foundation-stereo-model <path>.engine --depth-backend commercial \
+    --foundation-stereo-model <path>.plan --depth-backend commercial \
     --no-depth-metrics --overwrite-depth --overwrite-results
 ```
 
@@ -119,8 +135,7 @@ Without that flag the run aborts immediately, before doing any work, with
 launch — the root is `dataset.collected_depth_root` in the profile:
 
 ```bash
-ls -d "$(<collected_depth_root from the profile>)"/<name> 2>/dev/null \
-  || echo "no collected GT -- add --no-depth-metrics"
+ls -d /path/to/collected_depth/<name>
 ```
 
 `--no-depth-metrics` only skips *scoring* predicted depth against the collected map. Detection and
@@ -130,10 +145,9 @@ mistaken for one that made it.
 
 ### `--depth-backend commercial` is the licence assertion
 
-It selects nothing — the **model path** decides, and a `.engine` is the commercial model by
-definition. What the flag does is refuse to run when the two disagree, so a run that believes it
-is under the NGC model-page terms and is not fails at launch instead of in the metrics. Pass it on
-anything whose licence you will later claim.
+It selects nothing — an explicit ONNX/TRT model path selects the backend, or an unset path
+selects the shipped conventional stereo model. The flag rejects a conflicting backend name;
+it does not inspect the supplied model's contents or prove its license.
 
 ### Which overwrite flag
 
@@ -154,24 +168,22 @@ print(len(ps),'scenes  backend=',m['backend'],' norm=',m['normalization'],
 
 ### Depth settings: the tuned values are the committed defaults — do not pass them
 
-`config/defaults.yaml` already carries the measured configuration: `clahe_clip_limit: 3.0`,
+`config/defaults.yaml` carries the tuned configuration: `clahe_clip_limit: 3.0`,
 `clahe_detail_boost: 1.5`, `min/max_working_distance_m: 0.55/1.20`,
-`foundation_stereo_max_width: 800`. Every one carries its measurement in the comment beside it —
-read those rather than repeating figures here, since they are the values the defaults were fitted
-against. Passing them explicitly on the command line is noise at best and drift at worst; change
+`foundation_stereo_max_width: 800`. Passing them explicitly on the command line is noise at best and drift at worst; change
 them in the profile's `overrides:` block if a dataset needs different ones.
 
 Two that are not free to move:
 
 - **`--foundation-stereo-max-width` is tied to the engine.** A static engine fed a different
-  rectified size does not fail — it rescales by width and pads or crops. So changing the width
-  without rebuilding the engine silently measures a resampled configuration. Rebuild instead.
+  rectified size is fitted by width and padded; insufficient height raises an error. Automatic
+  ONNX mode can create another plan for another padded shape. Record the actual plan used.
 - **Working-distance bounds are both-or-neither.** They drive the disparity pre-shift together;
   a half-specified volume silently disables it.
 
 ## 5. Prove what actually ran
 
-Two files record it, and they are the answer to "which licence was this run under":
+Inspect requested configuration and resolved per-scene metadata separately:
 
 ```bash
 ./.venv/bin/python -c "
@@ -180,12 +192,13 @@ print(c['foundation_stereo_model']); print('max_width', c['foundation_stereo_max
 
 ./.venv/bin/python -c "
 import json; m=json.load(open('output/<name>/depth/000000/metadata.json'))
-print(m['backend'], m['normalization'], m['model_fixed_hw'])"
+print(m['backend'], m['normalization'], m['model_fixed_hw'], m['model'])"
 ```
 
-`backend: tao` + `normalization: imagenet` is the engine. Anything else means the depth in that
-directory was not produced by it — most likely a stale cache from before the engine was wired up,
-which `--overwrite-depth` clears.
+`metadata.json` records the resolved plan in `model`, including automatically generated paths.
+`inference_config.json` can retain an unset requested model in automatic mode. A stale depth
+cache can still contain old backend metadata: use `--overwrite-depth` after changing the model.
+The backend label records execution, not proof of artifact licensing or numerical correctness.
 
 ## 6. Read the results
 
@@ -238,12 +251,12 @@ engine, the refinement policy, the confidence threshold — needs `run_pipeline.
 
 ```bash
 ./.venv/bin/python script/run_batch_eval.py --config <name> --output-root output/<run_name> \
-    --foundation-stereo-model <path>.engine --depth-backend commercial
+    --foundation-stereo-model <path>.plan --depth-backend commercial
 ```
 
 Writes per-dataset outputs plus `summary.json` / `report.md` / `run_status.jsonl` under
 `--output-root`. `--depth-backend commercial` is worth more here than on a single run: a batch
-that silently fell back looks exactly like one that did not, hours later. Add `--continue-on-error`
+with an unexpected registered backend is harder to diagnose hours later. Add `--continue-on-error`
 if one dataset failing should not end the sweep, and `--no-depth-metrics` to drop the collected
 tree from both scoring *and* dataset discovery (without it, discovery intersects against that tree
 and can select nothing).
@@ -271,8 +284,8 @@ is deliberately not an accuracy test.
 
 ## 9. What counts as a gate
 
-`check_engine_depth_smoke.py --engine` needs one scene and the engine. Run it after any change to
-the depth stage — it is cheap enough that there is no argument for skipping it.
+`check_engine_depth_smoke.py --engine` needs one scene and a model. Run it when validation is
+authorized; an ONNX cache miss may compile first. Never report unexecuted checks as passed.
 
 None of them is an *accuracy* gate. Pose accuracy is only ever established by running a dataset
 and comparing `pose_summary.json` against a saved baseline, which is section 6.
@@ -285,12 +298,13 @@ and comparing `pose_summary.json` against a saved baseline, which is section 6.
   stage also re-deserializes the engine each scene, deliberately, so TensorRT's scratch is not
   resident while SAM3 and FoundationPose run. A depth-only caller that owns the GPU can keep it
   loaded instead, by calling `scene_depth` directly.
-- Run datasets sequentially. Two concurrent runs fit in GPU memory but contend and slow both.
+- Run datasets sequentially unless GPU memory and concurrency have been measured. SAM3's box
+  decoder adds separate weights/context memory.
 - The logs are tqdm progress bars written with `\r`. Piping through `tr '\r' '\n'` first is what
   makes `grep` and `tail` behave.
-- `invalid resource handle` mid-run is a CUDA-context problem, not a data problem: pycuda keeps
-  its own context and `inference/stereo/tao.py` pushes it only around TAO calls. That boundary is
-  where to look.
+- For CUDA handle/binding failures, inspect the configured device and resource lifetime in
+  `inference/trt.py`. Borrowed features expire after their encoder runs again or is released;
+  engines are sequential, and views cannot cross GPUs.
 - A depth map that looks plausible and is ~2× wrong means the input convention, not the model.
   Check `normalization: imagenet` in the scene metadata, and in the depth smoke check's output —
   a deployable export fed raw 0–255 is roughly twice as wrong without failing anything.
