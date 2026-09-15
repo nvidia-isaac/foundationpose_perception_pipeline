@@ -34,9 +34,3 @@ gt_cache/
 *.pem
 credentials.json
 secrets.json
-
-
-# Written into the checkout by the NGC CLI recipe in the setup skill's section 4.2. Neither is
-# source: the zip is the installer and ngc-cli/ is what it unpacks to, both re-fetchable.
-ngccli.zip
-ngc-cli/

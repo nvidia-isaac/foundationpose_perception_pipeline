@@ -78,7 +78,7 @@ Expected checkout layout — the default config paths assume it:
     .venv/                   Python 3.12
   sam3/
   foundation-pose-inference-library/
-  models/              the NGC depth export (§2.4) — a directory of files, not a checkout
+  models/              the Hugging Face depth export (§2.4) — a directory of files, not a checkout
   <your datasets>/     wherever you like; `dataset.root` in the profile points at it (§5)
 ```
 
@@ -174,7 +174,8 @@ Nothing checks this and nothing is enforced — a newer revision is a reasonable
 
 ### 2.3 FoundationPose
 
-The FoundationPose Inference Library is open source (Apache-2.0):
+The FoundationPose Inference Library is open source (Apache-2.0). Its download script fetches
+the ONNX weights from [nvidia/foundationpose on Hugging Face](https://huggingface.co/nvidia/foundationpose):
 
 ```bash
 cd ..
@@ -236,7 +237,7 @@ path: an unset variable produces a clear error rather than silently pointing som
 Depth comes from a TAO `deployable_*` export, run as a TensorRT engine through
 [TAO Deploy](https://github.com/NVIDIA-TAO/tao-deploy) in this venv and this process — no
 FoundationStereo source checkout and no second environment. The model carries the
-[NGC model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms;
+[Hugging Face model page](https://huggingface.co/nvidia/c-foundationstereo-s)'s terms;
 see [ARCHITECTURE.md → The environments](ARCHITECTURE.md#the-environments) for how it fits
 together.
 
@@ -264,8 +265,9 @@ them — nothing extra to run. If the first depth call fails with `ModuleNotFoun
 named 'omegaconf'` from inside `nvidia_tao_deploy`, run `uv sync --inexact --extra foundationpose`
 once.
 
-Fetch a deployable export from the NGC model page. Any of them work — the page carries several,
-and which one you want is a real choice.
+Fetch a deployable export from the
+[Hugging Face model page](https://huggingface.co/nvidia/c-foundationstereo-s).
+Any of them work — the page carries several, and which one you want is a real choice.
 
 **The export this pipeline is developed and measured against is
 `deployable_foundation_stereo_s_dynamic_v2.0`.** Numbers quoted anywhere in this repository
@@ -738,13 +740,13 @@ not make its published checkpoints Apache-2.0.
 
 | Component | Code | Weights / checkpoint |
 |---|---|---|
-| FoundationPose Inference Library | Apache-2.0, public on [GitHub](https://github.com/nvidia-isaac/foundation-pose-inference-library) | separate NGC artifact — `nvidia/tao/foundationpose:deployable_v1.0` terms, **not** Apache-2.0 |
+| FoundationPose Inference Library | Apache-2.0, public on [GitHub](https://github.com/nvidia-isaac/foundation-pose-inference-library) | separate Hugging Face artifact — the [model page](https://huggingface.co/nvidia/foundationpose)'s terms, **not** Apache-2.0 |
 | SAM3 | `LicenseRef-Meta-SAM` (Meta's custom SAM License, not OSI-approved) | same license, and the checkpoint is **gated** — request access at <https://huggingface.co/facebook/sam3> |
-| FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate NGC artifact — the [model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms |
+| FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate Hugging Face artifact — the [model page](https://huggingface.co/nvidia/c-foundationstereo-s)'s terms |
 
 Three things to know before shipping anything built on this:
 
-- **The depth model is an NGC artifact under the model page's terms.** Nothing here imports
+- **The depth model is a Hugging Face artifact under the model page's terms.** Nothing here imports
   FoundationStereo's source: an engine is executed by TensorRT alone, so the obligation is the
   model's, not the code's. Read the model page before shipping anything built on it.
 - **The SAM3 checkpoint is gated and non-redistributable** — every user must request access

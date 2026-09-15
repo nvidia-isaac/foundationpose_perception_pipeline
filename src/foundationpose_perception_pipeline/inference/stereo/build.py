@@ -27,7 +27,7 @@ against a generous one: `DepthNetInferencer` allocates host and device buffers a
 MAX shape, so every scene pays for the largest shape allowed; and TAO's own export config warns
 that dynamic H/W is unsafe for FoundationStereo, whose DINOv2 backbone constant-folds the
 trace-time patch count into its positional-embedding shape arithmetic. That warning is aimed at
-re-exporting rather than at the already-dynamic NGC ONNX, but it points at where wrong answers
+re-exporting rather than at the already-dynamic published ONNX, but it points at where wrong answers
 would come from.
 """
 
@@ -180,8 +180,9 @@ def build_engine(
         # never fetched", and the argument is the only thing that locates it -- there is no
         # search path and no conventional directory to have got wrong.
         raise FileNotFoundError(
-            f"ONNX export not found: {onnx_path}. Fetch a `deployable_*` export from the NGC "
-            "FoundationStereo model page and point --onnx at it; it may live anywhere."
+            f"ONNX export not found: {onnx_path}. Fetch a `deployable_*` ONNX export from "
+            "https://huggingface.co/nvidia/c-foundationstereo-s/tree/main/onnx "
+            "and point --onnx at it; it may live anywhere."
         )
     if precision not in PRECISIONS:
         raise ValueError(f"precision must be one of {PRECISIONS}, got {precision!r}")

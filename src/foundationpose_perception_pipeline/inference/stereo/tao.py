@@ -4,7 +4,7 @@
 """FoundationStereo through TAO Deploy: the commercially-licensable depth path.
 
 The `deployable_*` exports from
-https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo carry the terms on that
+https://huggingface.co/nvidia/c-foundationstereo-s carry the terms on that
 model page. This module exists so that model runs the way NVIDIA supports running it: a
 TensorRT engine, driven by TAO Deploy's own `DepthNetInferencer`.
 

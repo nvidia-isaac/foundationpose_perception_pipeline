@@ -1,35 +1,14 @@
 # FoundationStereo engine construction
 
 Use the TAO `deployable_*` ONNX from the
-[NGC model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo).
+[Hugging Face model page](https://huggingface.co/nvidia/c-foundationstereo-s).
 Its model-page terms apply separately from the pipeline's code license. No FoundationStereo
 source checkout or second Python environment is used.
 
 ## Obtain the export
 
-Reuse a supplied ONNX path. For a new download, the documented dynamic export is
-`nvidia/tao/foundationstereo:deployable_foundation_stereo_s_dynamic_v2.0`.
-The artifact is public. An NGC CLI recipe is:
-
-```bash
-PIPELINE_ROOT="$PWD"
-PIPELINE_PARENT="$(dirname "$PIPELINE_ROOT")"
-curl -fLsS -o ngccli.zip \
-  https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/4.34.10/files/ngccli_linux.zip
-python3 -m zipfile -e ngccli.zip .
-chmod +x ngc-cli/ngc
-mkdir -p "$PIPELINE_PARENT/models"
-(
-  cd "$PIPELINE_PARENT/models"
-  env -u NGC_CLI_ORG -u NGC_CLI_TEAM "$PIPELINE_ROOT/ngc-cli/ngc" registry model download-version \
-    nvidia/tao/foundationstereo:deployable_foundation_stereo_s_dynamic_v2.0
-)
-```
-
-The subshell leaves the caller in the product checkout. Do not configure org/team identity for
-an anonymous download: the fully qualified model name already specifies them. Reuse an NGC CLI
-already installed if available. If the public artifact becomes inaccessible, inspect the HTTP or
-CLI error and model page; do not invent a credential requirement or silently change the model.
+Reuse a supplied ONNX path. For a new download, let the user choose an export from the
+[Hugging Face model files](https://huggingface.co/nvidia/c-foundationstereo-s/tree/main/onnx).
 
 Prefer a dynamic ONNX export for measuring this rig's shape. A fixed-shape export requires the
 exact baked-in dimensions, such as 320x736, and may require resampling. Identify which export is

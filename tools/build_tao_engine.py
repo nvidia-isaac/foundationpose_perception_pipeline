@@ -18,8 +18,9 @@ RESCALES rather than refusing, so a wrong one costs accuracy without ever raisin
 path rather than resolving one, so `<split>` is yours to fill in from the profile's
 `dataset.split`: `--config` supplies the width, not the scene.
 
-The export this pipeline is developed and measured against is NGC model version
-`nvidia/tao/foundationstereo:deployable_foundation_stereo_s_dynamic_v2.0` -- a *dynamic* export,
+Download the deployable export of your choice from
+https://huggingface.co/nvidia/c-foundationstereo-s. The export this pipeline is developed and
+measured against is `deployable_foundation_stereo_s_dynamic_v2.0` -- a *dynamic* export,
 which is the kind to prefer. `../models/` is the sibling directory in README.md's layout; there is
 no FoundationStereo checkout in it and none is needed, since only the built `.engine` is ever
 read.

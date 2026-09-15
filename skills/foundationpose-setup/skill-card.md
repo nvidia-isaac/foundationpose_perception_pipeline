@@ -28,7 +28,8 @@ Mitigation: Review and scan skill before deployment. <br>
 - [Installation procedure](references/installation.md) <br>
 - [FoundationStereo engine construction](references/engine.md) <br>
 - [FoundationPose Perception Pipeline (GitHub)](https://github.com/nvidia-isaac/foundationpose_perception_pipeline) <br>
-- [FoundationStereo model (NGC)](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo) <br>
+- [FoundationPose model (Hugging Face)](https://huggingface.co/nvidia/foundationpose) <br>
+- [FoundationStereo model (Hugging Face)](https://huggingface.co/nvidia/c-foundationstereo-s) <br>
 - [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) <br>
 
 
