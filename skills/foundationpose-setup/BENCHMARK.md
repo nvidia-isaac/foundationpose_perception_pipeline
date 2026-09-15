@@ -82,7 +82,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 <summary>Show detailed findings and successful checks</summary>
 
 - **MEDIUM** QUALITY/quality_correctness: SKILL_SPEC recommended field missing: 'metadata.tags' (`skills/foundationpose-setup/SKILL.md`)
-- **MEDIUM** SECURITY/Unknown (RP1): MCP Rug Pull: The command `docker run --rm --gpus=all ubuntu:24.04 nvidia-smi` references the `ubuntu:24.04` image using a floating ta (`references/installation.md:17`)
+- **MEDIUM** SECURITY/Unknown (RP1): MCP Rug Pull: The command `docker run --rm --gpus=all ubuntu:24.04 nvidia-smi` references the `ubuntu:24.04` image using a floating tag (`references/installation.md:17`)
 - **LOW** QUALITY/quality_discoverability: Description very long (214 chars, recommend 50-150) (`skills/foundationpose-setup/SKILL.md`)
 
 </details>

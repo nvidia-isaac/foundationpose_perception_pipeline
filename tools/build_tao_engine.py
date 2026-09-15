@@ -8,26 +8,33 @@ architecture or TensorRT version and must not be committed; the filename encodes
 one is never picked up silently.
 
     ./.venv/bin/python tools/build_tao_engine.py \\
-        --onnx ../models/deployable_foundation_stereo_s_dynamic_v2.0.onnx \\
-        --shape-from-scene <dataset_root>/<dataset>/<split>/000000
+        --onnx ../models/deployable_foundation_stereo_s_dynamic.onnx \\
+        --shape-from-scene <dataset_root>/<dataset>/<split>/000000 \\
+        --precision fp32
 
-`--shape-from-scene` is the form to use whenever a dataset is present, and the example above is
-deliberately not a literal `--shape`: a shape copied out of documentation is a shape nobody
+For the dynamic ONNX, use `--shape-from-scene` whenever a dataset is present. The example above
+deliberately avoids a literal `--shape`: a shape copied out of documentation is a shape nobody
 measured on the rig it is about to run on, and a static engine fed a differently-sized pair
 RESCALES rather than refusing, so a wrong one costs accuracy without ever raising. It takes a
 path rather than resolving one, so `<split>` is yours to fill in from the profile's
 `dataset.split`: `--config` supplies the width, not the scene.
 
-Download the deployable export of your choice from
-https://huggingface.co/nvidia/c-foundationstereo-s. The export this pipeline is developed and
-measured against is `deployable_foundation_stereo_s_dynamic_v2.0` -- a *dynamic* export,
-which is the kind to prefer. `../models/` is the sibling directory in README.md's layout; there is
+Download `deployable_foundation_stereo_s_dynamic.onnx` from
+https://huggingface.co/nvidia/c-foundationstereo-s. This is the pipeline's recorded baseline,
+built in FP32 with a static engine profile; a dynamic ONNX does not require a dynamic engine profile.
+`../models/` is the sibling directory in README.md's layout; there is
 no FoundationStereo checkout in it and none is needed, since only the built `.engine` is ever
 read.
 
-`--shape` is the *padded* rectified size the pipeline will feed -- both dimensions a multiple of
-32. It exists for the case where no dataset has arrived yet and the install still has to be
-finished; the engine it produces is a PLACEHOLDER and has to be rebuilt with `--shape-from-scene`
+The model card labels the dynamic export ONNX Runtime-only but cites a TensorRT conversion
+failure specifically at FP16. Keep FP32 for this repository's dynamic-export baseline. For
+FP16, use `deployable_foundationstereo_small_320x736_v2.0.onnx` with `--shape 320x736`, or
+`deployable_foundationstereo_small_576x960_v2.0.onnx` with `--shape 576x960`, and validate accuracy.
+Fixed exports must retain their baked-in dimensions; scene-derived shapes cannot override them.
+
+For a dynamic ONNX, `--shape` is the *padded* rectified size the pipeline will feed -- both
+dimensions a multiple of 32. It exists for the case where no dataset has arrived yet and the
+install still has to be finished; the engine it produces is a PLACEHOLDER and has to be rebuilt with `--shape-from-scene`
 before any accuracy or regression figure is taken. When you have to pick one blind, derive it
 rather than copying a number:
 

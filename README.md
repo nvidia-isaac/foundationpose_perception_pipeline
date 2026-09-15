@@ -267,17 +267,12 @@ once.
 
 Fetch a deployable export from the
 [Hugging Face model page](https://huggingface.co/nvidia/c-foundationstereo-s).
-Any of them work — the page carries several, and which one you want is a real choice.
-
-**The export this pipeline is developed and measured against is
-`deployable_foundation_stereo_s_dynamic_v2.0`.** Numbers quoted anywhere in this repository
-correspond to that one; a different export is a supported choice but not a comparable measurement.
-
+Choose the export and precision together; fixed and dynamic exports have different constraints.
 
 | Export | Build with | Trade-off |
 |---|---|---|
-| **dynamic** (`*_dynamic_*.onnx`) | `--shape-from-scene <scene_dir>` | Preferred. Its input dims are free, so the engine can be built for the size *your* rig rectifies to. |
-| **fixed-shape** (`*_320x736_*.onnx`, `*_576x960_*.onnx`, …) | `--shape 320x736` | The size is baked into the export. Build at that size; the pipeline then resamples every rectified pair to reach it. |
+| **dynamic** (`deployable_foundation_stereo_s_dynamic.onnx`) | `--shape-from-scene <scene_dir> --precision fp32` | The repository's baseline. Its input dims are free, so the engine can be built for the size *your* rig rectifies to. |
+| **fixed-shape** (`deployable_foundationstereo_small_320x736_v2.0.onnx`, `deployable_foundationstereo_small_576x960_v2.0.onnx`) | `--shape 320x736` or `--shape 576x960`, respectively | The size is baked into the export. Build at that size; the pipeline resamples rectified pairs and may crop their height. |
 
 Where you put the file is up to you: nothing resolves it by convention, it is only the `--onnx`
 argument below. These commands assume a `models/` directory beside this repo.
@@ -286,12 +281,14 @@ Then build the engine **once per machine**:
 
 ```bash
 python tools/build_tao_engine.py \
-    --onnx ../models/<your-deployable-export>.onnx \
-    --shape-from-scene ../<your-dataset>/<split>/000000
+    --onnx ../models/deployable_foundation_stereo_s_dynamic.onnx \
+    --shape-from-scene ../<your-dataset>/<split>/000000 \
+    --precision fp32
 ```
 
 Exactly one of `--shape HxW`, `--shape-from-scene <scene_dir>` or `--min`/`--opt`/`--max` is
-required — the tool will not guess a size. `<split>` is the profile's `dataset.split`: the
+required — the tool will not guess a size. For a fixed export, use its matching `--shape`;
+scene-derived shapes cannot override its dimensions. `<split>` is the profile's `dataset.split`: the
 flag takes a path rather than resolving one, so `--config` supplies the width, not the scene.
 
 `--shape-from-scene` runs the real rectification to find the input size this dataset produces, so
