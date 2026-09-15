@@ -22,6 +22,7 @@ gt_cache/
 # Agent discovery alias for the canonical root-level skills/ directory.
 !.agents/
 !.claude
+!.coderabbit.yaml
 
 # Belt-and-braces: named explicitly so they stay ignored even if the `.*` rule above is
 # ever relaxed or a file lands in a subdirectory.
