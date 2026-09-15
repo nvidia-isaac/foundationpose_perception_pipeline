@@ -77,7 +77,7 @@ foundationpose = [
   "nvidia-cuda-runtime",         # provides libcudart.so.13
 ]
 
-# The commercially-licensable FoundationStereo path: the NGC `deployable_*` exports run through
+# The commercially-licensable FoundationStereo path: the Hugging Face `deployable_*` exports run through
 # TAO Deploy, in THIS environment. See README.md's FoundationStereo section.
 #
 # DELIBERATELY NOT AN EXTRA. `nvidia-tao-deploy` pins `scipy==1.17.1`, which requires numpy>=2,

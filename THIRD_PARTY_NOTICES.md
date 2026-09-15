@@ -109,9 +109,9 @@ Apache-2.0 license. Code and weights are licensed separately for every one of th
 
 | Component | Code | Weights / checkpoint |
 |---|---|---|
-| FoundationPose Inference Library | Apache-2.0, public on [GitHub](https://github.com/nvidia-isaac/foundation-pose-inference-library) | separate NGC artifact — `nvidia/tao/foundationpose:deployable_v1.0` terms, not Apache-2.0 |
+| FoundationPose Inference Library | Apache-2.0, public on [GitHub](https://github.com/nvidia-isaac/foundation-pose-inference-library) | separate Hugging Face artifact — the [model page](https://huggingface.co/nvidia/foundationpose)'s terms, not Apache-2.0 |
 | SAM3 | `LicenseRef-Meta-SAM` (Meta's SAM License, not OSI-approved) | same license; the checkpoint is gated — request access at <https://huggingface.co/facebook/sam3> |
-| FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate NGC artifact — the [model page](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo)'s terms |
+| FoundationStereo (TAO `deployable_*`) | executed as a TensorRT engine; no source is imported | separate Hugging Face artifact — the [model page](https://huggingface.co/nvidia/c-foundationstereo-s)'s terms |
 
 Section 8 of [README.md](README.md) covers this category in full.
 

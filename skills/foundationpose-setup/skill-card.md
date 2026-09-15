@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers installing, repairing, or configuring the FoundationPose perception pipeline for depth estimation, segmentation, and pose inference on GPU workstations. <br>
+Developers and engineers setting up, configuring, and troubleshooting the FoundationPose perception pipeline for depth, segmentation, and pose inference, including building FoundationStereo TensorRT depth engines. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -25,11 +25,11 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [Installation procedure](references/installation.md) <br>
-- [FoundationStereo engine construction](references/engine.md) <br>
 - [FoundationPose Perception Pipeline (GitHub)](https://github.com/nvidia-isaac/foundationpose_perception_pipeline) <br>
-- [FoundationStereo model (NGC)](https://catalog.ngc.nvidia.com/orgs/nvidia/tao/models/foundationstereo) <br>
-- [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) <br>
+- [FoundationStereo Model (Hugging Face)](https://huggingface.co/nvidia/c-foundationstereo-s) <br>
+- [NVIDIA Container Toolkit Installation Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) <br>
+- [Engine construction reference](references/engine.md) <br>
+- [Installation procedure reference](references/installation.md) <br>
 
 
 ## Skill Output: <br>
@@ -45,23 +45,23 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-4 evaluation tasks (3 positive, 1 negative), 3 attempts each, in isolated sandbox pods. <br>
+4 evaluation tasks (3 positive, 1 negative) with 3 attempts each, executed in isolated sandbox pods. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
-- Correctness: Checks final-answer correctness against a reference answer. <br>
-- Discoverability: Checks whether the right skill was selected and activated when needed. <br>
-- Effectiveness: Checks whether the skill helped complete the user's goal and followed the expected workflow. <br>
-- Efficiency: Checks tool-call productivity and token efficiency. <br>
+- Security: Whether the skill is safe to use — checks for unsafe operations, secret leakage, and unauthorized access. <br>
+- Correctness: Whether the skill produces correct answers against reference answers. <br>
+- Discoverability: Whether the expected skill was selected, decoys were avoided, and the workflow executed. <br>
+- Effectiveness: Whether the skill helps complete the user's goal (50% goal accuracy + 50% expected workflow adherence). <br>
+- Efficiency: Whether the skill avoids wasted tool calls and token usage (50% tool-call productivity + 50% token efficiency). <br>
 
 Underlying evaluation signals used in this run: <br>
-- `security`: Unsafe operations, secret leakage, and unauthorized access. <br>
+- `security`: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
+- `skill_execution`: Whether the expected skill was selected and the workflow executed. <br>
+- `skill_efficiency`: Tool-call productivity; routing is scored under Discoverability. <br>
 - `accuracy`: Final-answer correctness against the reference answer. <br>
-- `skill_execution`: Whether the expected skill was selected, decoys avoided, and workflow executed. <br>
 - `goal_accuracy`: Whether the user's goal was achieved. <br>
 - `behavior_check`: Whether the expected workflow behavior was followed. <br>
-- `skill_efficiency`: Tool-call productivity. <br>
 - `token_efficiency`: Actual uncached prompt plus completion usage. <br>
 
 
@@ -69,12 +69,12 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 94.6% | 93.2% |
+| Overall | 94.8% | 91.9% |
 | Security | 100.0% → 100.0% (±0.0 points) | 100.0% → 100.0% (±0.0 points) |
-| Correctness | 70.0% → 100.0% (+30.0 points) | 80.0% → 100.0% (+20.0 points) |
-| Discoverability | 100.0% | 86.7% |
-| Effectiveness | 69.4% → 94.4% (+25.0 points) | 71.3% → 88.8% (+17.5 points) |
-| Efficiency | 78.7% | 90.5% |
+| Correctness | 70.0% → 100.0% (+30.0 points) | 60.0% → 95.0% (+35.0 points) |
+| Discoverability | 100.0% | 90.0% |
+| Effectiveness | 65.6% → 96.9% (+31.3 points) | 65.0% → 83.8% (+18.8 points) |
+| Efficiency | 77.1% | 90.6% |
 
 ## Skill Version(s): <br>
 0.1.0 (source: frontmatter, pyproject.toml) <br>
