@@ -12,6 +12,9 @@ output_*/
 # Precomputed GT z-buffer cache -- regenerable from the dataset, not source.
 gt_cache/
 
+# Machine-specific TensorRT plans, build metadata and locks.
+engine_cache/
+
 # Hidden files are ignored by default so credentials and local tool state (.token, .env,
 # .netrc, editor/tool dirs) cannot be committed by accident. Dotfiles that SHOULD be tracked
 # must be re-included explicitly below -- keep that list short and deliberate.

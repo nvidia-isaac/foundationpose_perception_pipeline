@@ -27,7 +27,6 @@ from foundationpose_perception_pipeline.inference.detect import (
     base_text_state_from_prompt_state,  # noqa: F401
 )
 from foundationpose_perception_pipeline.pose import PoseFilterResult, PoseRenderer
-from foundationpose_perception_pipeline.runtime import inference_context, tensor_to_numpy
 from foundationpose_perception_pipeline.visualize import xyxy_to_norm_cxcywh
 
 
@@ -49,14 +48,21 @@ def apply_mask_nms_with_indices(
         keep.append(index)
     return keep, boxes[keep], masks[keep], scores[keep]
 
+def _image_size(image: Image.Image | np.ndarray) -> tuple[int, int]:
+    """Return (width, height) for a PIL Image or an (H, W, ...) numpy array."""
+    if isinstance(image, np.ndarray):
+        height, width = image.shape[:2]
+        return int(width), int(height)
+    return image.size
+
+
 def best_refined_candidate(
     *,
     processor: Any,  # Sam3Processor; untyped to keep sam3 out of this module's imports
-    image: Image.Image,
+    image: Image.Image | np.ndarray,
     base_text_state: dict[str, Any],
     render_box_xyxy: list[float],
     rendered_mask: np.ndarray,
-    device: str,
 ) -> dict[str, Any] | None:
     """Run one box-prompted SAM3 refinement and keep the best candidate mask."""
     state = {
@@ -64,15 +70,14 @@ def best_refined_candidate(
         "original_width": base_text_state["original_width"],
         "backbone_out": base_text_state["backbone_out"],
     }
-    with inference_context(device):
-        state = processor.add_geometric_prompt(
-            box=xyxy_to_norm_cxcywh(render_box_xyxy, image.size),
-            label=True,
-            state=state,
-        )
-    boxes = tensor_to_numpy(state["boxes"])
-    scores = tensor_to_numpy(state["scores"])
-    masks = tensor_to_numpy(state["masks"][:, 0]).astype(bool)
+    state = processor.add_geometric_prompt(
+        box=xyxy_to_norm_cxcywh(render_box_xyxy, _image_size(image)),
+        label=True,
+        state=state,
+    )
+    boxes = state["boxes"]
+    scores = state["scores"]
+    masks = state["masks"][:, 0].astype(bool)
     if len(boxes) == 0:
         return None
 
@@ -92,7 +97,7 @@ def apply_sam3_refinement(
     *,
     config: RefinementConfig,
     processor: Any,  # Sam3Processor; untyped to keep sam3 out of this module's imports
-    image: Image.Image,
+    image: Image.Image | np.ndarray,
     target: Target,
     camera_matrix_rgb: np.ndarray,
     raw_boxes: np.ndarray,
@@ -126,6 +131,7 @@ def apply_sam3_refinement(
     if config.policy != REPLACE_MID_NMS06_REFINEMENT_POLICY:
         raise ValueError(f"Unsupported SAM3 refinement policy: {config.policy}")
 
+    image_size = _image_size(image)
     refined_variants: list[dict[str, Any] | None] = [None] * len(raw_masks)
     candidate_rows: list[dict[str, Any]] = []
     for pose_row in raw_filter_results:
@@ -147,7 +153,7 @@ def apply_sam3_refinement(
             target.obj_id,
             pose_row_major_np,
             camera_matrix_rgb.astype(np.float32),
-            image.size,
+            image_size,
         )
         candidate_row["eligible"] = True
         refined = best_refined_candidate(
@@ -156,7 +162,6 @@ def apply_sam3_refinement(
             base_text_state=base_text_state,
             render_box_xyxy=pose_row.render_box_xyxy,
             rendered_mask=rendered_mask,
-            device=config.device,
         )
         if refined is not None:
             refined_variants[pred_index] = refined

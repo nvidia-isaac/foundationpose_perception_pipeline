@@ -7,10 +7,7 @@
         --scene-dir <dataset_root>/<dataset>/test/000000 \\
         --out-dir /tmp/fs --engine <path>.engine
 
-Exists for two reasons: debugging one scene without the rest of the pipeline, and keeping the
-option of running this backend in its own process. The pipeline calls `scene_depth` directly --
-in-process is the point of this path -- but if pycuda's CUDA context ever has to be isolated from
-the pipeline's torch, the fallback is to spawn this rather than to move the code.
+Runs the same backend in isolation for one-scene debugging.
 
 A separate module from `depth.py` so that `python -m ...stereo` does not re-execute a module the
 package `__init__` has already imported, which makes runpy warn about unpredictable behaviour.

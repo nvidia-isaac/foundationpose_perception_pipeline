@@ -180,14 +180,15 @@ overrides:
     # Within noise of no preprocessing (6.44 vs 6.40 mm MAE over 8 scenes); kept for consistency
     # with the other profiles. The bilateral detail boost is neutral here too.
     #
-    # THE COMMERCIAL DEPTH MODEL, as a TensorRT engine. Commented out because an engine is built
-    # for one GPU architecture, one TensorRT version, one precision and one input shape, and none
-    # of that survives being copied to another machine -- a committed path is wrong for everyone
-    # except whoever committed it. UNCOMMENT AND EDIT the line below, or pass
-    # --foundation-stereo-model per run. Without one, a run stops at launch saying so.
+    # THE COMMERCIAL DEPTH MODEL, as a TensorRT engine. Commented out because a plan is built for
+    # one GPU architecture, one TensorRT version, one precision and one input shape, and none of
+    # that survives being copied to another machine -- a committed path is wrong for everyone
+    # except whoever committed it. Left unset, the run uses the conventional stereo ONNX under
+    # `models_dir` and compiles it on first use. To pin a prebuilt plan, UNCOMMENT AND EDIT the
+    # line below, or pass --foundation-stereo-model per run.
     #
     # Build it first, and ASK for the shape rather than choosing one:
-    #   ./.venv/bin/python tools/build_tao_engine.py --onnx <deployable>.onnx \
+    #   ./.venv/bin/python tools/build_stereo_engine.py --onnx <deployable>.onnx \
     #       --shape-from-scene ../../bop_adapted/tless/test/000000
     #
     # Why ask: T-LESS rectifies to a width that is not a multiple of 32, and the runtime RESIZES
@@ -195,9 +196,10 @@ overrides:
     # padded width. Rounding both dimensions independently gives a shape 32 rows short, and every
     # frame is then silently cropped.
     #
-    # Path is relative to THIS file, so `../../models/` is the sibling `models/` directory in
-    # README.md's layout. See README.md section 2.4.
-    # engine: ../../models/<the .engine build_tao_engine.py wrote>
+    # Path is relative to THIS file; use the .plan path build_stereo_engine.py printed, which
+    # lives in `engine_cache/` under the sibling `models/` directory in README.md's layout. See
+    # README.md section 2.4.
+    # engine: ../../models/engine_cache/<stem>__<fingerprint>.plan
   rerank:
     # Weights are NOT the shipped defaults. They were fitted by searching the three free weights
     # plus the fp_score divisor against occlusion-aware GT at mask IoU 0.5, with

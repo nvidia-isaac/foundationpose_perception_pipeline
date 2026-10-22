@@ -23,6 +23,7 @@ from foundationpose_perception_pipeline.config import (
     DEFAULT_DATE,
     DEFAULT_RERANK_CUTOFF,
     DEFAULT_RERANK_FORMULA,
+    DEFAULT_SAM3_RESOLUTION,
     add_config_argument,
     settings_from_argv,
 )
@@ -79,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--confidence-threshold", type=float, default=settings.detection.sam3_confidence_threshold
     )
-    parser.add_argument("--resolution", type=int, default=1008)
+    parser.add_argument("--resolution", type=int, default=DEFAULT_SAM3_RESOLUTION)
     parser.add_argument(
         "--depth-source",
         choices=depth_source_choices(),
@@ -139,6 +140,11 @@ def parse_args() -> argparse.Namespace:
         "--foundation-stereo-max-width",
         type=int,
         default=settings.depth.foundation_stereo_max_width,
+    )
+    parser.add_argument(
+        "--foundation-stereo-fixed-height",
+        type=int,
+        default=settings.depth.foundation_stereo_fixed_height,
     )
     # Whatever the registered backends and sources need; forwarded to every dataset below.
     add_backend_arguments(parser)
@@ -256,6 +262,8 @@ def run_dataset(args: argparse.Namespace, dataset: str, shared_engine_cache_dir:
     # stays true when a new one is registered.
     if registered_sources()[args.depth_source].uses_depth_backend:
         cmd.extend(["--foundation-stereo-max-width", str(args.foundation_stereo_max_width)])
+        if args.foundation_stereo_fixed_height is not None:
+            cmd.extend(["--foundation-stereo-fixed-height", str(args.foundation_stereo_fixed_height)])
         for flag, value in backend_forwarded_flags(args).items():
             cmd.extend([flag, str(value)])
         if args.foundation_stereo_model is not None:

@@ -4,7 +4,7 @@
 """Standalone smoke test that the depth engine is built, loadable, and predicts sane disparity.
 
 The third of the install checks, beside `verify_sam3.py` and `verify_foundationpose.py`, and it
-covers the one component the other two do not: the TensorRT engine and the whole TAO Deploy stack
+covers the one component the other two do not: the TensorRT engine and the native CUDA Runtime bindings
 underneath it. **Needs no dataset** -- which is the point, because an engine is built long before
 any capture is on the machine, and "did the build work" should be answerable on its own.
 
@@ -15,10 +15,7 @@ That makes this a numerical check rather than a "tensors came back" check.
 
 What it exercises, all of which fail separately in practice:
 
-- `nvidia-tao-deploy` and `pycuda` are installed and importable;
-- pycuda's CUDA context can be created and entered (`tao_context`) -- the failure that produced
-  `invalid resource handle` when it was got wrong;
-- the engine file deserializes under *this* TensorRT, on *this* GPU, and its sidecar matches;
+- TensorRT and CUDA Runtime bindings are installed and can load the engine;
 - TensorRT executes it and returns disparity of the expected shape and magnitude.
 
 What it does NOT catch, stated rather than implied: an input-normalisation mistake. A clean,
@@ -105,20 +102,18 @@ def main() -> None:
     args = parse_args()
     if args.engine is None:
         raise SystemExit(
-            "No engine to verify. Build one with tools/build_tao_engine.py, then pass --engine "
+            "No engine to verify. Build one with tools/build_stereo_engine.py, then pass --engine "
             "or set depth.engine in the config profile."
         )
     engine_path = Path(args.engine).expanduser()
     if not engine_path.exists():
         raise SystemExit(
             f"Engine not found: {engine_path}. Engines are machine-specific and are not "
-            "committed; build one with tools/build_tao_engine.py."
+            "committed; build one with tools/build_stereo_engine.py."
         )
 
-    # Imported here, not at module scope: `pycuda.autoinit` takes a CUDA context merely by being
-    # imported, and this script should fail with a clear message about a missing engine before
-    # touching the GPU at all.
-    from foundationpose_perception_pipeline.inference.stereo.tao import load_engine, release_engines
+    # Load only after validating the requested path.
+    from foundationpose_perception_pipeline.inference.stereo import load_engine, release_engines
 
     engine = load_engine(str(engine_path.resolve()))
     height, width = engine.fixed_hw or (DEFAULT_HEIGHT, DEFAULT_WIDTH)

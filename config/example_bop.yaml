@@ -121,13 +121,13 @@ regression:
 # Every key here must exist in defaults.yaml. An unknown section or key is an error at launch, not
 # a no-op -- so a misindented line is reported rather than silently ignored.
 #
-# Mostly optional -- with ONE exception. `depth.engine` has no usable default: an engine is built
-# for one GPU architecture, one TensorRT version, one precision and one input shape, so no
-# committed path can be right on your machine. Set it here or pass --foundation-stereo-model on
-# every run; without either, a run stops at launch and says so. Build it first, and take the
-# shape from the scene rather than choosing one:
+# All optional. `depth.engine` left null uses the conventional stereo ONNX under `models_dir` and
+# compiles it on first use into `models_dir/engine_cache/`, so a prebuilt plan is not required.
+# Prebuild one to pin a fixed engine shape taken from the scene and to skip the first-use
+# compile -- a plan is built for one GPU architecture, one TensorRT version, one precision and one
+# input shape, so build it on the machine that runs it:
 #
-#   ./.venv/bin/python tools/build_tao_engine.py --onnx <deployable>.onnx \
+#   ./.venv/bin/python tools/build_stereo_engine.py --onnx <deployable>.onnx \
 #       --shape-from-scene <root>/<dataset>/<split>/000000
 #
 # `--shape-from-scene` takes a path, not a profile, so it does not read `split` for you --
@@ -135,7 +135,8 @@ regression:
 #
 # overrides:
 #   depth:
-#     engine: ../../models/<the .engine build_tao_engine.py wrote>   # relative to THIS file
+#     # The .plan path build_stereo_engine.py printed; relative to THIS file.
+#     engine: ../../models/engine_cache/<stem>__<fingerprint>.plan
 #     # THE WORKING VOLUME IS THE OTHER KEY A DIFFERENT RIG MUST SET, and getting it wrong does
 #     # not fail -- disparity CLAMPS past the model's range, which puts a surface too far away in
 #     # a depth map that still looks entirely plausible. Set it to the actual bin, tightly.

@@ -34,6 +34,7 @@ import argparse
 import json
 import sys
 import time
+from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ REPO_ROOT = PIPELINE_ROOT.parent
 sys.path.insert(0, str(PIPELINE_ROOT / "src"))
 
 from foundationpose_perception_pipeline.config import (  # noqa: E402
+    DEFAULT_SAM3_RESOLUTION,
     FOUNDATIONPOSE_ROOT_DEFAULT,
     KEEP_ALL_RERANK_POLICY,
     NO_REFINEMENT_POLICY,
@@ -86,6 +88,7 @@ from foundationpose_perception_pipeline.pose import (  # noqa: E402
 
 # External checkouts must be locatable before any model import; see `inject_external_paths`.
 inject_external_paths(REPO_ROOT, FOUNDATIONPOSE_ROOT_DEFAULT)
+
 from foundationpose_perception_pipeline.inference.config import InferenceConfig  # noqa: E402
 from foundationpose_perception_pipeline.inference.detect import (  # noqa: E402
     base_text_state_from_prompt_state,
@@ -96,7 +99,6 @@ from foundationpose_perception_pipeline.inference.select import (  # noqa: E402
     mark_selected_filter_results,
     select_proposals,
 )
-from foundationpose_perception_pipeline.runtime import inference_context, tensor_to_numpy  # noqa: E402
 from foundationpose_perception_pipeline.visualize import (  # noqa: E402
     draw_overlay,
     draw_pose_filter_overlay,
@@ -133,7 +135,7 @@ def parse_args() -> argparse.Namespace:
              "is the only ground-truth read in this script.",
     )
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--resolution", type=int, default=1008)
+    parser.add_argument("--resolution", type=int, default=DEFAULT_SAM3_RESOLUTION)
     parser.add_argument("--confidence-threshold", type=float, default=settings.detection.sam3_confidence_threshold)
     parser.add_argument("--sam3-refinement-policy", default=settings.refinement.policy)
     parser.add_argument("--refinement-low-miou", type=float, default=settings.refinement.low_miou)
@@ -166,6 +168,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fp-n-refine", type=int, default=3)
     parser.add_argument("--foundation-stereo-model", type=Path, default=settings.depth.engine)
     parser.add_argument("--foundation-stereo-max-width", type=int, default=settings.depth.foundation_stereo_max_width)
+    parser.add_argument("--foundation-stereo-fixed-height", type=int, default=settings.depth.foundation_stereo_fixed_height)
     parser.add_argument("--depth-backend", choices=depth_backend_choices(), default="auto")
     parser.add_argument("--min-working-distance-m", type=float, default=settings.depth.min_working_distance_m)
     parser.add_argument("--max-working-distance-m", type=float, default=settings.depth.max_working_distance_m)
@@ -186,8 +189,7 @@ def parse_args() -> argparse.Namespace:
     add_backend_arguments(parser)
     add_source_arguments(parser)
     parser.add_argument("--collected-root", type=Path, default=settings.dataset.collected_depth_root)
-    parser.add_argument("--checkpoint-path", type=Path, default=None)
-    parser.add_argument("--no-hf", action="store_true")
+    parser.add_argument("--sam3-models-dir", type=Path, default=None, help="Directory containing exported SAM3 engines and vocabulary.")
     parser.add_argument(
         "--no-overlays",
         action="store_true",
@@ -234,59 +236,10 @@ def run_inference(args: argparse.Namespace) -> Path:
         else None
     )
 
-    ensure_foundationpose_paths(args)
-    pose_renderer = PoseRenderer(args.dataset_root, args.models_subdir)
-    pose_registry = FoundationPoseRegistry(
-        engine_cache_dir=(args.fp_engine_cache_dir or (output_dir / "foundationpose_engine_cache")).resolve(),
-        refine_model_path=(
-            args.fp_refine_model_path.expanduser().resolve()
-            if args.fp_refine_model_path is not None
-            else (args.foundationpose_root / "weights" / "refiner_net.onnx").resolve()
-        ),
-        score_model_path=(
-            args.fp_score_model_path.expanduser().resolve()
-            if args.fp_score_model_path is not None
-            else (args.foundationpose_root / "weights" / "score_net.onnx").resolve()
-        ),
-        models_subdir=args.models_subdir,
-        device_id=args.fp_device_id,
-        prepare_batch=args.fp_prepare_batch,
-    )
-
-    import torch
-    from sam3.model.sam3_image_processor import Sam3Processor
-    from sam3.model_builder import build_sam3_image_model
-
-    model = build_sam3_image_model(
-        device=args.device,
-        checkpoint_path=str(args.checkpoint_path) if args.checkpoint_path else None,
-        load_from_HF=not args.no_hf,
-    )
-    processor = Sam3Processor(
-        model, resolution=args.resolution, device=args.device, confidence_threshold=args.confidence_threshold
-    )
-    # Built once from the CLI; each stage then receives only its own section.
-    inference_config = InferenceConfig.from_args(args)
-    pose_estimator = PoseEstimator(
-        processor=processor,
-        pose_registry=pose_registry,
-        pose_renderer=pose_renderer,
-        dataset_root=args.dataset_root,
-        device=args.device,
-        inference_context=inference_context,
-        run_foundationpose_for_proposals=run_foundationpose_for_proposals,
-        apply_sam3_refinement=apply_sam3_refinement,
-        select_proposals=select_proposals,
-        mark_selected_filter_results=mark_selected_filter_results,
-        base_text_state_from_prompt_state=base_text_state_from_prompt_state,
-        tensor_to_numpy=tensor_to_numpy,
-        torch=torch,
-        no_refinement_policy=NO_REFINEMENT_POLICY,
-    )
-
     # Resolved once, before any scene: which depth backend this run uses is a property of the
     # run, and `--depth-backend` exists so a contradiction fails here rather than being
-    # discovered in the metrics.
+    # discovered in the metrics. Checked before any engine is built, so a bad stereo model
+    # path fails in seconds rather than after the SAM3 plans have compiled.
     depth_source = registered_sources()[args.depth_source]
     if depth_source.uses_depth_backend:
         depth_backend = resolve_backend(args.foundation_stereo_model, getattr(args, "depth_backend", "auto"))
@@ -295,10 +248,59 @@ def run_inference(args: argparse.Namespace) -> Path:
             + (f" ({args.foundation_stereo_model})" if args.foundation_stereo_model else ""),
             flush=True,
         )
+    # Built once from the CLI; each stage then receives only its own section. Also validated
+    # before any engine is built.
+    inference_config = InferenceConfig.from_args(args)
+
+    _, refine_model, score_model = ensure_foundationpose_paths(args)
+    pose_renderer = PoseRenderer(args.dataset_root, args.models_subdir)
+    # Each resource registers its release the moment it exists, so a failure anywhere after it
+    # -- including in the constructors that follow -- still releases it. `pop_all` hands the
+    # callbacks to the run's own stack once setup has succeeded.
+    with ExitStack() as setup:
+        pose_registry = FoundationPoseRegistry(
+            # Per-run by default, as documented: the SDK's engines are a run artifact and stay out
+            # of the shared stereo/SAM3 cache under models_dir.
+            engine_cache_dir=(
+                args.fp_engine_cache_dir.expanduser()
+                if args.fp_engine_cache_dir is not None
+                else output_dir / "foundationpose_engine_cache"
+            ).resolve(),
+            refine_model_path=refine_model,
+            score_model_path=score_model,
+            models_subdir=args.models_subdir,
+            device_id=args.fp_device_id,
+            prepare_batch=args.fp_prepare_batch,
+        )
+        setup.callback(pose_registry.close)
+
+        from foundationpose_perception_pipeline.inference.sam3.trt_processor import Sam3TrtProcessor
+
+        processor = Sam3TrtProcessor(
+            models_dir=args.sam3_models_dir,
+            resolution=args.resolution,
+            device=args.device,
+            confidence_threshold=args.confidence_threshold,
+        )
+        setup.callback(processor.release)
+        pose_estimator = PoseEstimator(
+            processor=processor,
+            pose_registry=pose_registry,
+            pose_renderer=pose_renderer,
+            dataset_root=args.dataset_root,
+            run_foundationpose_for_proposals=run_foundationpose_for_proposals,
+            apply_sam3_refinement=apply_sam3_refinement,
+            select_proposals=select_proposals,
+            mark_selected_filter_results=mark_selected_filter_results,
+            base_text_state_from_prompt_state=base_text_state_from_prompt_state,
+            no_refinement_policy=NO_REFINEMENT_POLICY,
+        )
+        cleanup = setup.pop_all()
 
     predictions_path = output_dir / "predictions.jsonl"
     runtime_rows: list[dict[str, Any]] = []
-    with predictions_path.open("w", encoding="utf-8") as predictions_file:
+    # `cleanup` is entered first so it still runs if opening the predictions file fails.
+    with cleanup, predictions_path.open("w", encoding="utf-8") as predictions_file:
         for scene_id in tqdm(scene_ids, desc=f"{args.dataset} inference"):
             scene_started = time.perf_counter()
             scene_dir = dataset_dir / args.split / f"{scene_id:06d}"
@@ -501,6 +503,7 @@ def run_inference(args: argparse.Namespace) -> Path:
                 "confidence_threshold": args.confidence_threshold,
                 "foundation_stereo_model": str(args.foundation_stereo_model) if args.foundation_stereo_model else None,
                 "foundation_stereo_max_width": args.foundation_stereo_max_width,
+                "foundation_stereo_fixed_height": args.foundation_stereo_fixed_height,
                 "runtime_sec_total": sum(row["runtime_sec"] for row in runtime_rows),
                 # Per-scene rows, not just the total: `evaluate.py` runs in a separate process, so
                 # this file is the only way the timings reach the summariser. Without them

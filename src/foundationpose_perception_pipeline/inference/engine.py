@@ -60,6 +60,11 @@ class PoseEstimator:
 
     Collaborators are injected rather than constructed here so that the caller keeps control of
     model loading, which is slow and belongs to the process, not to this object.
+
+    `retain_pose_context` keeps the current object's FoundationPose context across scenes, for a
+    caller such as a long-running service that sees the same object request after request. The
+    context is still released when the object or the image size changes, or when acquisition
+    fails, so at most one object's context is ever held -- the same peak memory as the default.
     """
 
     def __init__(
@@ -69,40 +74,37 @@ class PoseEstimator:
         pose_registry: Any,
         pose_renderer: Any,
         dataset_root: Path,
-        device: str,
-        inference_context: Any,
         run_foundationpose_for_proposals: Any,
         apply_sam3_refinement: Any,
         select_proposals: Any,
         mark_selected_filter_results: Any,
         base_text_state_from_prompt_state: Any,
-        tensor_to_numpy: Any,
-        torch: Any,
         no_refinement_policy: str,
+        retain_pose_context: bool = False,
     ) -> None:
         self.processor = processor
         self.pose_registry = pose_registry
         self.pose_renderer = pose_renderer
         self.dataset_root = dataset_root
-        self.device = device
-        self._inference_context = inference_context
         self._run_foundationpose = run_foundationpose_for_proposals
         self._apply_refinement = apply_sam3_refinement
         self._select_proposals = select_proposals
         self._mark_selected = mark_selected_filter_results
         self._base_text_state = base_text_state_from_prompt_state
-        self._tensor_to_numpy = tensor_to_numpy
-        self._torch = torch
         self._no_refinement_policy = no_refinement_policy
+        self._retain_pose_context = retain_pose_context
         self._active_pose_image_size: tuple[int, int] | None = None
         self._active_target_obj_id: int | None = None
 
     def _release(self) -> None:
-        """Tear down the current FoundationPose context and reclaim its GPU memory."""
+        """Tear down the current FoundationPose context and reclaim its GPU memory.
+
+        `gc.collect()` is the whole reclamation story: every model in this pipeline is a
+        TensorRT engine, so device memory is owned by the engine wrappers and released by
+        their finalizers, not by a caching allocator that would need to be drained.
+        """
         self.pose_registry.close()
         gc.collect()
-        if self.device.startswith("cuda") and self._torch.cuda.is_available():
-            self._torch.cuda.empty_cache()
 
     def begin_scene(self, image: Any, depth_image_size: tuple[int, int]) -> dict[str, Any]:
         """Prepare for a new scene: size-check the pose context, embed the image once.
@@ -113,23 +115,24 @@ class PoseEstimator:
         if self._active_pose_image_size != depth_image_size:
             self.pose_registry.close()
             self._active_pose_image_size = depth_image_size
-        self._active_target_obj_id = None
-        with self._inference_context(self.device):
-            return dict(self.processor.set_image(image))
+        if not self._retain_pose_context:
+            self._active_target_obj_id = None
+        return dict(self.processor.set_image(image))
 
     def end_scene(self) -> None:
         """Release everything held for the scene just finished.
 
-        FoundationPose/TensorRT memory grows across a long run, so contexts are torn down
-        between scenes rather than kept warm. Both lifecycle fields are cleared as well: the
-        next scene must not believe a context still exists for its image size or object.
+        FoundationPose/TensorRT memory grows across a long run, so by default contexts are torn
+        down between scenes rather than kept warm. Both lifecycle fields are cleared as well: the
+        next scene must not believe a context still exists for its image size or object. With
+        `retain_pose_context` the context and both fields are deliberately kept for the next scene.
         """
+        if self._retain_pose_context:
+            return
         self.pose_registry.close()
         self._active_pose_image_size = None
         self._active_target_obj_id = None
         gc.collect()
-        if self.device.startswith("cuda") and self._torch.cuda.is_available():
-            self._torch.cuda.empty_cache()
 
     def _acquire(self, target: Any, depth_image_size: tuple[int, int]) -> Any:
         """Return a FoundationPose estimator for this object, rebuilding the context if needed.
@@ -153,12 +156,11 @@ class PoseEstimator:
     def propose(self, prompt: str, image_state: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray, Any]:
         """Run SAM3 for one text prompt against the scene's cached image embedding."""
         prompt_state = dict(image_state)
-        with self._inference_context(self.device):
-            prompt_state = self.processor.set_text_prompt(prompt=prompt, state=prompt_state)
+        prompt_state = self.processor.set_text_prompt(prompt=prompt, state=prompt_state)
         return (
-            self._tensor_to_numpy(prompt_state["boxes"]),
-            self._tensor_to_numpy(prompt_state["scores"]),
-            self._tensor_to_numpy(prompt_state["masks"][:, 0]).astype(bool),
+            prompt_state["boxes"],
+            prompt_state["scores"],
+            prompt_state["masks"][:, 0].astype(bool),
             self._base_text_state(prompt_state),
         )
 
@@ -186,6 +188,11 @@ class PoseEstimator:
         proposal set is then identical to the raw one and re-posing it would be pure cost.
         """
         estimator = self._acquire(target, depth_image_size)
+        rgb_image_size = (
+            (int(image.shape[1]), int(image.shape[0]))
+            if isinstance(image, np.ndarray)
+            else image.size
+        )
         raw_filter_results = self._run_foundationpose(
             estimator=estimator,
             target=target,
@@ -194,7 +201,7 @@ class PoseEstimator:
             depth_result=depth_result,
             pose_image_np=pose_image_np,
             depth_image_size=depth_image_size,
-            rgb_image_size=image.size,
+            rgb_image_size=rgb_image_size,
             n_refine=config.pose.n_refine,
             n_hypotheses=config.pose.n_hypotheses,
         )
@@ -229,7 +236,7 @@ class PoseEstimator:
                 depth_result=depth_result,
                 pose_image_np=pose_image_np,
                 depth_image_size=depth_image_size,
-                rgb_image_size=image.size,
+                rgb_image_size=rgb_image_size,
                 n_refine=config.pose.n_refine,
                 n_hypotheses=config.pose.n_hypotheses,
             )
